@@ -29,4 +29,5 @@ func main() {
 	if err := cmd.Run(); err != nil {
 		log.Fatalln(err)
 	}
+	os.Exit(-1)
 }
