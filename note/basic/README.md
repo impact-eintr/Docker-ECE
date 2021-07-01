@@ -531,4 +531,401 @@ func main() {
 ### AUFS
 AUFS ，英文全称是 Advanced Multi-Layered Unification Filesystem ， 曾经也 叫 AcronymMulti-LayeredUnification Filesystem 、 Another Multi-Layered Unification Filesystem 。 AUFS 完全重写了早期的 UnionFS 1.x ，其主要目的是为了可靠性和性能 ， 井且引入了 一些新的功能，比如可写分支的负载均衡 。 AUFS 的一些实现已经被纳入 UnionFS 2.x 版本。
 
+### overlay2
+
+#### 简介
+OverlayFS是一种和AUFS很类似的文件系统，与AUFS相比，OverlayFS有以下特性：
+1.  更简单地设计；
+2. 从3.18开始，就进入了Linux内核主线；
+3. 可能更快一些。
+　　因此，OverlayFS在Docker社区关注度提高很快，被很多人认为是AUFS的继承者。就像宣称的一样，OverlayFS还很年轻。所以，在生成环境使用它时，还是需要更加当心。
+　　Docker的overlay存储驱动利用了很多OverlayFS特性来构建和管理镜像与容器的磁盘结构。
+　　自从Docker1.12起，Docker也支持overlay2存储驱动，相比于overlay来说，overlay2在inode优化上更加高效。但overlay2驱动只兼容Linux kernel4.0以上的版本。
+> 注意：自从OverlayFS加入kernel主线后，它在kernel模块中的名称就被从overlayfs改为overlay了。但是为了在本文中区别，我们使用OverlayFS代表整个文件系统，而overlay/overlay2表示Docker的存储驱动。
+
+``` bash
+[root@staight chmdocker]# ls /
+bin  boot  cgroup  data  dev  etc  home  lib  lib64  lost+found  media  mnt  opt  proc  root  run  sbin  srv  sys  tmp  usr  var
+[root@staight chmdocker]# docker run -it --name=alpine alpine
+/ # ls
+bin    dev    etc    home   lib    media  mnt    opt    proc   root   run    sbin   srv    sys    tmp    usr    var
+
+```
+
+可以看到两者的根文件系统是不同的。如果是虚拟机，虚拟化一个硬盘文件可以达到这一目的；而在容器中，该文件系统则是真实存在于宿主机上的，可以使用inspect子命令查看：
+
+``` bash
+[root@staight chmdocker]# docker inspect alpine | grep MergedDir
+                "MergedDir": "/var/lib/docker/overlay2/16361198b12618b2234306c6998cd8eb1c55f577a02144913da60dba4ca0c6e5/merged",
+[root@staight chmdocker]# ls /var/lib/docker/overlay2/16361198b12618b2234306c6998cd8eb1c55f577a02144913da60dba4ca0c6e5/merged
+bin  dev  etc  home  lib  media  mnt  opt  proc  root  run  sbin  srv  sys  tmp  usr  var
+
+```
+
+如上，/var/lib/docker/overlay2/16361198b12618b2234306c6998cd8eb1c55f577a02144913da60dba4ca0c6e5/merged目录即是alpine容器使用的根文件系统。
+
+不过，如果使用每个镜像都需要一个独立的根文件系统的话，那想必磁盘早已拥挤不堪了；且一个镜像可以同时运行多个容器，每个容器对文件的改动该怎么办？
+
+Linux提供了一种叫做联合文件系统的文件系统，它具备如下特性：
+- 联合挂载：将多个目录按层次组合，一并挂载到一个联合挂载点。
+- 写时复制：对联合挂载点的修改不会影响到底层的多个目录，而是使用其他目录记录修改的操作。
+目前有多种文件系统可以被当作联合文件系统，实现如上的功能：overlay2，aufs，devicemapper，btrfs，zfs，vfs等等。而overlay2就是其中的佼佼者，也是docker目前推荐的文件系统：<https://docs.docker.com/storage/storagedriver/select-storage-driver/>.
+
+overlay2
+overlay2是一个类似于aufs的现代的联合文件系统，并且更快。overlay2已被收录进linux内核，它需要内核版本不低于4.0，如果是RHEL或Centos的话则不低于3.10.0-514。
+
+#### overlay2结构
+
+overlay2结构:
+
+![img](https://staight.github.io/2019/10/04/%E5%AE%B9%E5%99%A8%E5%AE%9E%E7%8E%B0-overlay2/overlay%E7%BB%93%E6%9E%84.jpg)
+
+如上，overlay2包括lowerdir，upperdir和merged三个层次，其中：
+
+- lowerdir：表示较为底层的目录，修改联合挂载点不会影响到lowerdir。
+- upperdir：表示较为上层的目录，修改联合挂载点会在upperdir同步修改。
+- merged：是lowerdir和upperdir合并后的联合挂载点。
+- workdir：用来存放挂载后的临时文件与间接文件。
+
+在运行容器后，可以通过mount命令查看其具体挂载信息：
+
+``` bash
+[root@staight chmdocker]# mount | grep overlay
+overlay on /var/lib/docker/overlay2/44e47143b993ccb827382f7095f608fe5c8187b930144125985cfc2cb2289615/merged type overlay (rw,relatime,lowerdir=/var/lib/docker/overlay2/l/BL743PEBM6L4TAII4O3F5RY3UP:/var/lib/docker/overlay2/l/FG2PM6DZU5GSMZZFSHLQ44AZQF:/var/lib/docker/overlay2/l/GD7FGVNJVTZTE4YY2G4AO4ZJUV:/var/lib/docker/overlay2/l/WSN6X5DNBS6FFIOWFQS3MAOG7R:/var/lib/docker/overlay2/l/DYLO5RP2ZVQY7MBXMLOGQUDC5C:/var/lib/docker/overlay2/l/PCAH7U5MFUNN4EP5PITBVOWK4J,upperdir=/var/lib/docker/overlay2/44e47143b993ccb827382f7095f608fe5c8187b930144125985cfc2cb2289615/diff,workdir=/var/lib/docker/overlay2/44e47143b993ccb827382f7095f608fe5c8187b930144125985cfc2cb2289615/work,index=off)
+overlay on /var/lib/docker/overlay2/eb0cd6ac125fe776459af3ff04553e5bb9da6e0b45b50fc11e170ae9e206480d/merged type overlay (rw,relatime,lowerdir=/var/lib/docker/overlay2/l/XRYKDQNEPCQJETR6FUJZILURAK:/var/lib/docker/overlay2/l/FG2PM6DZU5GSMZZFSHLQ44AZQF:/var/lib/docker/overlay2/l/GD7FGVNJVTZTE4YY2G4AO4ZJUV:/var/lib/docker/overlay2/l/WSN6X5DNBS6FFIOWFQS3MAOG7R:/var/lib/docker/overlay2/l/DYLO5RP2ZVQY7MBXMLOGQUDC5C:/var/lib/docker/overlay2/l/PCAH7U5MFUNN4EP5PITBVOWK4J,upperdir=/var/lib/docker/overlay2/eb0cd6ac125fe776459af3ff04553e5bb9da6e0b45b50fc11e170ae9e206480d/diff,workdir=/var/lib/docker/overlay2/eb0cd6ac125fe776459af3ff04553e5bb9da6e0b45b50fc11e170ae9e206480d/work,index=off)
+```
+
+如上，可以看到：
+- 联合挂载点merged：/var/lib/docker/overlay2/44e47143b993ccb827382f7095f608fe5c8187b930144125985cfc2cb2289615/merged
+- lowerdir：/var/lib/docker/overlay2/l/BL743PEBM6L4TAII4O3F5RY3UP:/var/lib/docker/overlay2/l/FG2PM6DZU5GSMZZFSHLQ44AZQF:/var/lib/docker/overlay2/l/GD7FGVNJVTZTE4YY2G4AO4ZJUV:/var/lib/docker/overlay2/l/WSN6X5DNBS6FFIOWFQS3MAOG7R:/var/lib/docker/overlay2/l/DYLO5RP2ZVQY7MBXMLOGQUDC5C:/var/lib/docker/overlay2/l/PCAH7U5MFUNN4EP5PITBVOWK4J，冒号分隔多个lowerdir，从左到右层次越低。
+- upperdir：/var/lib/docker/overlay2/44e47143b993ccb827382f7095f608fe5c8187b930144125985cfc2cb2289615/diff
+- workdir：/var/lib/docker/overlay2/44e47143b993ccb827382f7095f608fe5c8187b930144125985cfc2cb2289615/work
+### 实践
+那么，尝试着挂载一个overlay2文件系统吧。
+
+使用目录：
+
+``` bash
+overlay2
+├── lower1
+│   ├── a
+│   └── b
+├── lower2
+│   └── a
+├── merged
+├── upper
+│   └── c
+└── work
+
+```
+
+使用mount命令挂载：
+
+``` bash
+
+[root@staight overlay2]# mount -t overlay overlay -o lowerdir=lower1:lower2,upperdir=upper,workdir=work merged
+```
+
+如上，挂载了一个名为overlay的overlay类型的文件系统，挂载点为merged目录。
+
+查看merged目录的层次：
+
+``` bash
+[root@staight overlay2]# tree merged/
+merged/
+├── a
+├── b
+└── c
+
+```
+
+查看这些文件的内容：
+
+``` bash
+[root@staight overlay2]# for i in `ls merged`;do echo $i: `cat merged/$i`;done
+a: in lower1
+b: in lower1
+c: in upper
+
+```
+
+可以看到，从merged视角，位于lower2的a文件被lower1的a文件覆盖；b文件位于lower1，c文件位于upper，符合从高到低upper->lower1->lower2的层次结构。
+
+尝试在merged目录添加一个文件d：
+
+``` bash
+[root@staight overlay2]# touch merged/d
+[root@staight overlay2]# ls merged/
+a  b  c  d
+[root@staight overlay2]# ls upper/
+c  d
+[root@staight overlay2]# ls lower1
+a  b
+[root@staight overlay2]# ls lower2
+a
+```
+
+可以看到对merged目录的改动同步至upper目录中，并不会影响到lower目录。
+
+### 进阶内容
+> overlay和overlay2
+OverlayFS（overlay）的镜像分层与共享
+　　OverlayFS使用两个目录，把一个目录置放于另一个之上，并且对外提供单个统一的视角。这两个目录通常被称作层，这个分层的技术被称作union mount。术语上，下层的目录叫做lowerdir，上层的叫做upperdir。对外展示的统一视图称作merged。
+　　下图展示了Docker镜像和Docker容器是如何分层的。镜像层就是lowerdir，容器层是upperdir。暴露在外的统一视图就是所谓的merged。
+
+　　注意镜像层和容器层是如何处理相同的文件的：容器层（upperdir）的文件是显性的，会隐藏镜像层（lowerdir）相同文件的存在。容器映射（merged）显示出统一的视图。
+　　overlay驱动只能工作在两层之上。也就是说多层镜像不能用多层OverlayFS实现。替代的，每个镜像层在/var/lib/docker/overlay中用自己的目录来实现，使用硬链接这种有效利用空间的方法，来引用底层分享的数据。注意：Docker1.10之后，镜像层ID和/var/lib/docker中的目录名不再一一对应。
+　　创建一个容器，overlay驱动联合镜像层和一个新目录给容器。镜像顶层是overlay中的只读lowerdir，容器的新目录是可写的upperdir。
+
+overlay中镜像和容器的磁盘结构
+　　下面的docker pull命令展示了Docker host下载一个由5层组成的镜像。
+
+``` bash
+$ sudo docker pull ubuntu
+
+Using default tag: latest
+latest: Pulling from library/ubuntu
+
+5ba4f30e5bea: Pull complete
+9d7d19c9dc56: Pull complete
+ac6ad7efd0f9: Pull complete
+e7491a747824: Pull complete
+a3ed95caeb02: Pull complete
+Digest: sha256:46fb5d001b88ad904c5c732b086b596b92cfb4a4840a3abd0e35dbb6870585e4
+Status: Downloaded newer image for ubuntu:latest
+
+```
+
+　　上图的输出结果显示pull了5个目录包含了5个镜像层，每一层在/var/lib/docker/overlay/下都有自己的目录。还是再次提醒下，如你所见，Docker1.10之后，镜像层和目录名不再对应。
+
+``` bash
+$ ls -l /var/lib/docker/overlay/
+
+total 20
+drwx------ 3 root root 4096 Jun 20 16:11 38f3ed2eac129654acef11c32670b534670c3a06e483fce313d72e3e0a15baa8
+drwx------ 3 root root 4096 Jun 20 16:11 55f1e14c361b90570df46371b20ce6d480c434981cbda5fd68c6ff61aa0a5358
+drwx------ 3 root root 4096 Jun 20 16:11 824c8a961a4f5e8fe4f4243dab57c5be798e7fd195f6d88ab06aea92ba931654
+drwx------ 3 root root 4096 Jun 20 16:11 ad0fe55125ebf599da124da175174a4b8c1878afe6907bf7c78570341f308461
+drwx------ 3 root root 4096 Jun 20 16:11 edab9b5e5bf73f2997524eebeac1de4cf9c8b904fa8ad3ec43b3504196aa3801
+
+```
+
+　　镜像层目录中，共享的数据使用的是硬链接，他们的inode号相同。这样做有效地利用了磁盘。
+
+``` bash
+$ ls -i /var/lib/docker/overlay/38f3ed2eac129654acef11c32670b534670c3a06e483fce313d72e3e0a15baa8/root/bin/ls
+
+19793696 /var/lib/docker/overlay/38f3ed2eac129654acef11c32670b534670c3a06e483fce313d72e3e0a15baa8/root/bin/ls
+
+$ ls -i /var/lib/docker/overlay/55f1e14c361b90570df46371b20ce6d480c434981cbda5fd68c6ff61aa0a5358/root/bin/ls
+
+19793696 /var/lib/docker/overlay/55f1e14c361b90570df46371b20ce6d480c434981cbda5fd68c6ff61aa0a5358/root/bin/ls
+
+```
+
+　　容器也在/var/lib/docker/overlay/下。使用ls -l命令查看容器目录，会发现以下文件和目录。
+
+``` bash
+$ ls -l /var/lib/docker/overlay/<directory-of-running-container>
+
+total 16
+-rw-r--r-- 1 root root   64 Jun 20 16:39 lower-id
+drwxr-xr-x 1 root root 4096 Jun 20 16:39 merged
+drwxr-xr-x 4 root root 4096 Jun 20 16:39 upper
+drwx------ 3 root root 4096 Jun 20 16:39 work
+
+```
+
+　　这四个文件系统对象都是OverlayFS的组件。lower-id文件包含了容器的镜像层最顶层的ID。
+
+``` bash
+$ cat /var/lib/docker/overlay/ec444863a55a9f1ca2df72223d459c5d940a721b2288ff86a3f27be28b53be6c/lower-id
+
+55f1e14c361b90570df46371b20ce6d480c434981cbda5fd68c6ff61aa0a5358
+
+```
+
+　　upper目录是容器的可读写层。任何对容器的改变都写在这个目录中。
+　　merged目录就是容器的mount point，这就是暴露的镜像（lowerdir）和容器（upperdir）的统一视图。任何对容器的改变也影响这个目录。
+　　work目录是OverlayFS功能需要的，会被如copy_up之类的操作使用。
+　　可以通过mount命令来核实上面的描述是否正确。
+
+``` bash
+$ mount | grep overlay
+
+overlay on /var/lib/docker/overlay/ec444863a55a.../merged
+type overlay (rw,relatime,lowerdir=/var/lib/docker/overlay/55f1e14c361b.../root,
+upperdir=/var/lib/docker/overlay/ec444863a55a.../upper,
+workdir=/var/lib/docker/overlay/ec444863a55a.../work)
+
+```
+
+OverlayFS（overlay2）的镜像分层与共享
+　　overlay驱动只工作在一个lower OverlayFS层之上，因此需要硬链接来实现多层镜像，但overlay2驱动原生地支持多层lower OverlayFS镜像（最多128层）。
+　　因此overlay2驱动在合层相关的命令（如build和commit）中提供了更好的性能，与overlay驱动对比，消耗了更少的inode。
+
+overlay2中镜像和容器的磁盘结构
+　　docker pull ubuntu下载了包含5层的镜像，可以看到在/var/lib/docker/overlay2中，有6个目录。
+
+$ ls -l /var/lib/docker/overlay2
+
+total 24
+drwx------ 5 root root 4096 Jun 20 07:36 223c2864175491657d238e2664251df13b63adb8d050924fd1bfcdb278b866f7
+drwx------ 3 root root 4096 Jun 20 07:36 3a36935c9df35472229c57f4a27105a136f5e4dbef0f87905b2e506e494e348b
+drwx------ 5 root root 4096 Jun 20 07:36 4e9fa83caff3e8f4cc83693fa407a4a9fac9573deaf481506c102d484dd1e6a1
+drwx------ 5 root root 4096 Jun 20 07:36 e8876a226237217ec61c4baf238a32992291d059fdac95ed6303bdff3f59cff5
+drwx------ 5 root root 4096 Jun 20 07:36 eca1e4e1694283e001f200a667bb3cb40853cf2d1b12c29feda7422fed78afed
+drwx------ 2 root root 4096 Jun 20 07:36 l
+　　l目录包含了很多软连接，使用短名称指向了其他层。短名称用于避免mount参数时达到页面大小的限制。
+
+$ ls -l /var/lib/docker/overlay2/l
+
+total 20
+lrwxrwxrwx 1 root root 72 Jun 20 07:36 6Y5IM2XC7TSNIJZZFLJCS6I4I4 -> ../3a36935c9df35472229c57f4a27105a136f5e4dbef0f87905b2e506e494e348b/diff
+lrwxrwxrwx 1 root root 72 Jun 20 07:36 B3WWEFKBG3PLLV737KZFIASSW7 -> ../4e9fa83caff3e8f4cc83693fa407a4a9fac9573deaf481506c102d484dd1e6a1/diff
+lrwxrwxrwx 1 root root 72 Jun 20 07:36 JEYMODZYFCZFYSDABYXD5MF6YO -> ../eca1e4e1694283e001f200a667bb3cb40853cf2d1b12c29feda7422fed78afed/diff
+lrwxrwxrwx 1 root root 72 Jun 20 07:36 NFYKDW6APBCCUCTOUSYDH4DXAT -> ../223c2864175491657d238e2664251df13b63adb8d050924fd1bfcdb278b866f7/diff
+lrwxrwxrwx 1 root root 72 Jun 20 07:36 UL2MW33MSE3Q5VYIKBRN4ZAGQP -> ../e8876a226237217ec61c4baf238a32992291d059fdac95ed6303bdff3f59cff5/diff
+　　在最低层中，有个link文件，包含了前面提到的这个层对应的短名称；还有个diff目录，包含了这个镜像的内容。
+
+$ ls /var/lib/docker/overlay2/3a36935c9df35472229c57f4a27105a136f5e4dbef0f87905b2e506e494e348b/
+
+diff  link
+
+$ cat /var/lib/docker/overlay2/3a36935c9df35472229c57f4a27105a136f5e4dbef0f87905b2e506e494e348b/link
+
+6Y5IM2XC7TSNIJZZFLJCS6I4I4
+
+$ ls  /var/lib/docker/overlay2/3a36935c9df35472229c57f4a27105a136f5e4dbef0f87905b2e506e494e348b/diff
+
+bin  boot  dev  etc  home  lib  lib64  media  mnt  opt  proc  root  run  sbin  srv  sys  tmp  usr  var
+　　第二底层中，lower文件指出了该层的组成。该目录还有diff、merged和work目录。
+
+$ ls /var/lib/docker/overlay2/223c2864175491657d238e2664251df13b63adb8d050924fd1bfcdb278b866f7
+
+diff  link  lower  merged  work
+
+$ cat /var/lib/docker/overlay2/223c2864175491657d238e2664251df13b63adb8d050924fd1bfcdb278b866f7/lower
+
+l/6Y5IM2XC7TSNIJZZFLJCS6I4I4
+
+$ ls /var/lib/docker/overlay2/223c2864175491657d238e2664251df13b63adb8d050924fd1bfcdb278b866f7/diff/
+
+etc  sbin  usr  var
+　　运行容器包含的目录同样有着类似的文件和目录。注意在lower文件中，使用:符号来分割不同的底层，并且顺序是从高层到底层。
+
+$ ls -l /var/lib/docker/overlay/<directory-of-running-container>
+
+$ cat /var/lib/docker/overlay/<directory-of-running-container>/lower
+
+l/DJA75GUWHWG7EWICFYX54FIOVT:l/B3WWEFKBG3PLLV737KZFIASSW7:l/JEYMODZYFCZFYSDABYXD5MF6YO:l/UL2MW33MSE3Q5VYIKBRN4ZAGQP:l/NFYKDW6APBCCUCTOUSYDH4DXAT:l/6Y5IM2XC7TSNIJZZFLJCS6I4I4
+　　mount的结果如下：
+
+``` bash
+$ mount | grep overlay
+
+overlay on /var/lib/docker/overlay2/9186877cdf386d0a3b016149cf30c208f326dca307529e646afce5b3f83f5304/merged
+type overlay (rw,relatime,
+lowerdir=l/DJA75GUWHWG7EWICFYX54FIOVT:l/B3WWEFKBG3PLLV737KZFIASSW7:l/JEYMODZYFCZFYSDABYXD5MF6YO:l/UL2MW33MSE3Q5VYIKBRN4ZAGQP:l/NFYKDW6APBCCUCTOUSYDH4DXAT:l/6Y5IM2XC7TSNIJZZFLJCS6I4I4,
+upperdir=9186877cdf386d0a3b016149cf30c208f326dca307529e646afce5b3f83f5304/diff,
+workdir=9186877cdf386d0a3b016149cf30c208f326dca307529e646afce5b3f83f5304/work)
+
+```
+
+#### 容器使用overlay读写
+有三种场景，容器会通过overlay只读访问文件。
+ - 容器层不存在的文件。如果容器只读打开一个文件，但该容器不在容器层（upperdir），就要从镜像层（lowerdir）中读取。这会引起很小的性能损耗。
+ - 只存在于容器层的文件。如果容器只读权限打开一个文件，并且容器只存在于容器层（upperdir）而不是镜像层（lowerdir），那么直接从镜像层读取文件，无额外性能损耗。
+ - 文件同时存在于容器层和镜像层。那么会读取容器层的文件，因为容器层（upperdir）隐藏了镜像层（lowerdir）的同名文件。因此，也没有额外的性能损耗。
+　　有以下场景容器修改文件。
+ 第一次写一个文件。容器第一次写一个已经存在的文件，容器层不存在这个文件。overlay/overlay2驱动执行copy-up操作，将文件从镜像层拷贝到容器层。然后容器修改容器层新拷贝的文件。
+　　　　然而，OverlayFS工作在文件级别而不是块级别。也就是说所有的OverlayFS的copy-up操作都会拷贝整个文件，即使文件非常大但却只修改了一小部分，这在容器写性能上有着显著的影响。不过，有两个方面值得注意：
+　　　　　▷ copy-up操作只发生在第一次写文件时。后续的对同一个文件的写操作都是直接针对拷贝到容器层的那个新文件。
+　　　　　▷ OverlayFS只工作在两层中。这比AUFS要在多层镜像中查找时性能要好。
+ 删除文件和目录。删除文件时，容器会在镜像层创建一个whiteout文件，而镜像层的文件并没有删除。但是，whiteout文件会隐藏它。
+　　　　容器中删除一个目录，容器层会创建一个不透明目录。这和whiteout文件隐藏镜像层的文件类似。
+ 重命名目录。只有在源路径和目的路径都在顶层容器层时，才允许执行rename操作。否则，会返回EXDEV。
+　　　　因此，你的应用需要能够处理EXDEV，并且回滚操作，执行替代的“拷贝和删除”策略。
+
+在Docker中配置overlay/overlay2存储驱动
+　　为了给Docker配置overlay存储驱动，你的Docker host必须运行在Linux kernel3.18版本之上，而且加载了overlay内核驱动。对于overlay2驱动，kernel版本必须在4.0或以上。OverlayFS可以运行在大多数Linux文件系统之上。不过，现在最建议在生产环境中使用ext4。
+　　下面的步骤讲述了如何在Docker host中配置使用OverlayFS。
+ 注意：在开始配置之前，如果你已经在使用Docker daemon，并且有一些想保留的镜像，简易你push它们到Docker hub中。
+　　　　1) 如果Docker daemon正在运行，需要先停止其运行。
+
+``` bash
+$ systemctl stop docker.service
+```
+
+　　　　2) 检查kernel版本，确认overlay的内核模块是否加载。
+
+``` bash
+$ uname -r
+
+5.12.9-1-MANJARO
+
+$ lsmod | grep overlay
+
+overlay               147456  2
+
+```
+
+# 如果上面命令没有输出，说明驱动没有加载，可以如下操作
+
+``` bash
+$ modprobe overlay
+```
+　　　　3) 使用overlay/overlay2存储驱动来启动Docker daemon。
+
+``` bash
+
+$ dockerd --storage-driver=overlay2 &
+[1] 29403
+
+root@ip-10-0-0-174:/home/ubuntu# INFO[0000] Listening for HTTP on unix (/var/run/docker.sock)
+INFO[0000] Option DefaultDriver: bridge
+INFO[0000] Option DefaultNetwork: bridge
+```
+　　　　此外，你还可以在Docker的配置文件中添加--storage-driver=overlay的标志到DOCKER_OPTS中，这样就可以持久化配置，不再需要启动daemon时手动指定--storage-driver标志了。比如，可以将配置持久化到配置文件/etc/default/docker中，将下面内容加入该文件中。
+
+``` bash
+DOCKER_OPTS="--storage-driver=overlay2"
+```
+
+　　　　4) 检查daemon是否已经使用了overlay/overlay2存储驱动。
+``` bash
+$ docker info
+
+Containers: 0
+Images: 0
+Storage Driver: overlay2
+Backing Filesystem: extfs
+
+```
+　　　　注意输出结果显示后端文件系统使用的是extfs。虽然支持多种文件系统，但是生产环境中还是建议使用extfs（尤其ext4）。
+
+#### OverlayFS和Docker性能
+　　一般来说，overlay/overlay2驱动更快一些，几乎肯定比aufs和devicemapper更快，在某些情况下，可能比btrfs也更快。即便如此，在使用overlay/overlay2存储驱动时，还是需要注意以下一些方面：
+
+- Page Caching，页缓存。OverlayFS支持页缓存共享，也就是说如果多个容器访问同一个文件，可以共享一个或多个页缓存选项。这使得overlay/overlay2驱动高效地利用了内存，是PaaS平台或者其他高密度场景的一个很好地选项。
+- copy_up。和AuFS一样，在容器第一次修改文件时，OverlayFS都需要执行copy-up操作，这会给写操作带来一些延迟——尤其这个要拷贝的文件很大时。不过，一旦文件已经执行了这个向上拷贝的操作后，所有后续对这个文件的操作都只针对这份容器层的新拷贝而已。
+OverlayFS的copy_up操作比AuFS的copy_up操作要快。因为AUFS支持比OverlayFS支持更多的层数，如果需要在多层查找文件时，就可能导致比较大的延迟。
+- Inode limits。使用overlay存储驱动可能导致过多的inode消耗，尤其是Docker host上镜像和容器的数目增长时。大量的镜像，或者很多容器启停，，会迅速消耗掉该Docker host上的inode。overlay2存储驱动不存在这个问题。
+　　不幸的是，只能在文件系统创建时指定inode的个数。因此，可以考虑将/var/lib/docker放在一个单独的设备文件系统中，或者在创建文件系统时指定inode个数。
+
+> 以下一些方法可以提供OverlayFS的性能。
+　- 使用Solid State Devices（SSD）。
+　- 使用数据卷。数据卷能提高更好的性能，因为其绕过存储驱动，不会引起超配、copy-on-write可能会导致的隐患。
+OverlayFS兼容性
+> 有以下两点OverlayFS和其他文件系统不太兼容：
+- open(2)。OverlayFS支持吃POSIX标准的一个子集。以copy-up操作为例，加入你的应用调用了fd1=open("foo", O_RDONLY) 和 fd2=open("foo", O_RDWR)，你的应用期望fd1和fd2指向同一个文件，然而，因为copy-up操作，会导致指向不同的文件。
+
+- rename(2)，这个和前面提到AuFS一致。
+小结
+　　overlay/overlay2存储驱动已经成为了Docker存储驱动的首选，并且性能优于AuFS和devicemapper。不过，他们也带来了一些与其他文件系统的不兼容性，如对open和rename操作的支持。另外，overlay与overlay2相比，overlay2支持了多层镜像，优化了inode使用。然而，使用这两种驱动时，需要注意你的Docker host的kernel版本。
+
+
+## linux proc 文件系统
+  linux下的`/proc`文件系统是由内核提供的，它其实不是一个真正的文件系统，只是包含了系统运行时的信息(比如系统内寻、mount设备信息、一些硬件配置等)，它只存在于内存中，而不占用外存空间。它以文件系统的方式，为访问内核数据的操作提供借口。实际上，很多系统工具都是简单地去读取这个文件系统的某个文件内容， 比如`lsmod` = `cat /proc./modules`
+当遍历这个目录的时候，会发现很多数字，这些都是为每个进程创建的空间，数字就是它们的 PID 。
 
