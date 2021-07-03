@@ -1,66 +1,60 @@
 package main
 
 import (
-	"fmt"
-	"io/ioutil"
-	"log"
+	"errors"
 	"os"
-	"os/exec"
-	"path"
-	"strconv"
-	"syscall"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/urfave/cli/v2"
 )
 
-const cgroupMemoryHierarchyMount = "/sys/fs/cgroup"
+const usage = `docker-ece is a simple container runtiome implementation.
+The purpose of this project is to learn how docker works and how to
+write a docker by ourselves. Enjpy itm jut for fun`
+
+var initCommand = cli.Command{
+	Name: "run",
+	Usage: `Create  a container with namespace and cgroups limit
+          mydocker run -ti [command ]`,
+	Flags: []cli.Flag{
+		&cli.BoolFlag{
+			Name:  "ti",
+			Usage: "enable tty",
+		},
+	},
+	Action: func(ctx *cli.Context) error {
+		if ctx.NArg() < 1 {
+			return errors.New("Miss container command")
+		}
+		cmd := ctx.Args().Get(0)
+		tty := ctx.Bool("ti")
+		Run(cmd, cmd)
+
+	},
+}
+
+var runCommand = cli.Command{}
 
 func main() {
-
-	if os.Args[0] == "/proc/self/exe" {
-		// 容器进程
-		fmt.Printf("fork again! current pid %d\n", syscall.Getpid())
-		cmd := exec.Command("sh", "-c", `/bin/stress --vm-bytes 1024m --vm-keep -m 1`)
-		cmd.SysProcAttr = &syscall.SysProcAttr{}
-
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		if err := cmd.Run(); err != nil {
-			log.Fatalln(err)
-			os.Exit(1)
-		}
+	app := &cli.App{
+		Name:  "docker-ece",
+		Usage: usage,
 	}
 
-	cmd := exec.Command("/proc/self/exe")
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS}
+	app.Commands = []*cli.Command{
+		&initCommand,
+		&runCommand,
+	}
 
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	app.Before = func(context *cli.Context) error {
+		log.SetFormatter(&log.JSONFormatter{})
+		log.SetOutput(os.Stdout)
+		return nil
+	}
 
-	if err := cmd.Start(); err != nil {
-		log.Fatalln(err)
-		os.Exit(1)
-	} else {
-		// 得到fork出来进程映射在外部命名空间的pid
-		fmt.Printf("forked [%v]\n", cmd.Process.Pid)
-		//在系统默认创建挂载了 memory subsystem 的 Hierarchy 上创建 cgroup
-		os.Mkdir(path.Join(cgroupMemoryHierarchyMount, "testmemorylimit"), 0755)
-
-		//将容器进程加入到这个 cgroup 中
-		ioutil.WriteFile(path.Join(cgroupMemoryHierarchyMount, "testmemorylimit", "cgroup.procs"),
-			[]byte(strconv.Itoa(cmd.Process.Pid)), 0644)
-
-		//限制 cgroup 进程使用
-		ioutil.WriteFile(path.Join(cgroupMemoryHierarchyMount, "testmemorylimit", "cpu.max"),
-			[]byte("50000 100000"), 0644)
-
-		ioutil.WriteFile(path.Join(cgroupMemoryHierarchyMount, "testmemorylimit", "memory.max"),
-			[]byte("200m"), 0644)
-
-		cmd.Process.Wait()
-
+	err := app.Run(os.Args)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 }
