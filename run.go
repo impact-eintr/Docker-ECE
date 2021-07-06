@@ -2,7 +2,11 @@ package main
 
 import (
 	"errors"
+	"os"
+	"strings"
 
+	"github.com/impact-eintr/Docker-ECE/cgroups"
+	"github.com/impact-eintr/Docker-ECE/cgroups/subsystems"
 	"github.com/impact-eintr/Docker-ECE/container"
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
@@ -22,8 +26,8 @@ var runCommand = cli.Command{
 			Usage: "memory limit",
 		},
 		&cli.StringFlag{
-			Name:  "cpushare",
-			Usage: "cpushare limit",
+			Name:  "cpumax",
+			Usage: "cpu limit",
 		},
 		&cli.StringFlag{
 			Name:  "cpuset",
@@ -42,8 +46,13 @@ var runCommand = cli.Command{
 		}
 
 		tty := ctx.Bool("ti")
+		resConf := &subsystems.ResourceConfig{
+			MemoryMax: ctx.String("m"),
+			CpuMax:    ctx.String("cpumax"),
+			CpuSet:    ctx.String("cpuset"),
+		}
 		// Run 准备启动容器
-		Run(tty, cmd)
+		Run(tty, cmdArr, resConf)
 		return nil
 	},
 }
@@ -54,14 +63,12 @@ var initCommand = cli.Command{
           Do not call it outside!`,
 	Action: func(ctx *cli.Context) error {
 		log.Infof("init comm on ")
-		cmd := ctx.Args().Get(0)
-		log.Infof("command %s", cmd)
-		err := container.RunContainerInitProcess(cmd, nil)
+		err := container.RunContainerInitProcess()
 		return err
 	},
 }
 
-func Run(tty bool, comArray string) {
+func Run(tty bool, comArray []string, res *subsystems.ResourceConfig) {
 	parent, writePipe := container.NewParentProcess(tty)
 	if parent == nil {
 		log.Errorf("New parent process error")
@@ -72,4 +79,20 @@ func Run(tty bool, comArray string) {
 		log.Error(err)
 	}
 
+	// use ece-cgroup as cgroup name
+	cgroupManager := cgroups.NewCgroupManager("ece-cgroup")
+	defer cgroupManager.Destory()
+	cgroupManager.Set(res)
+	cgroupManager.Apply(parent.Process.Pid)
+
+	sendInitCommand(comArray, writePipe)
+	parent.Wait()
+
+}
+
+func sendInitCommand(comArray []string, writePipe *os.File) {
+	command := strings.Join(comArray, " ")
+	log.Infof("command all is %s", command)
+	writePipe.WriteString(command)
+	writePipe.Close()
 }

@@ -14,13 +14,14 @@ func NewParentProcess(tty bool) (*exec.Cmd, *os.File) {
 		log.Errorf("New pipe err %s", err)
 	}
 
-	cmd := exec.Command("/proc/selp/exe", "init")
+	cmd := exec.Command("/proc/self/exe", "init")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags: syscall.CLONE_NEWUTS |
 			syscall.CLONE_NEWPID |
 			syscall.CLONE_NEWNS |
 			syscall.CLONE_NEWNET |
 			syscall.CLONE_NEWIPC}
+
 	if tty {
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
