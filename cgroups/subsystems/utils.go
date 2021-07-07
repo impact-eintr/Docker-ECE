@@ -8,8 +8,19 @@ import (
 	"strings"
 )
 
+var Root string
+
 func GetCgroupPath(subsystem string, cgroupPath string, autoCreate bool) (string, error) {
-	cgroupRoot := FindCgroupMountpoint()
+
+	var cgroupRoot string
+	if cgroupPath != "" {
+		Root = FindCgroupMountpoint()
+		cgroupRoot = FindAbsoluteCgroupMountpoint()
+
+	} else {
+		cgroupRoot = Root
+		fmt.Println(cgroupRoot)
+	}
 
 	_, err := os.Stat(path.Join(cgroupRoot, cgroupPath))
 	if err == nil || (autoCreate && os.IsNotExist(err)) {
@@ -25,6 +36,10 @@ func GetCgroupPath(subsystem string, cgroupPath string, autoCreate bool) (string
 		return "", fmt.Errorf("cgroup path error %v", err)
 
 	}
+}
+
+func FindAbsoluteCgroupMountpoint() string {
+	return "/sys/fs/cgroup"
 }
 
 func FindCgroupMountpoint() string {
