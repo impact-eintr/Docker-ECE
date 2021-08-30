@@ -22,17 +22,17 @@ var runCommand = cli.Command{
 			Usage: "enable tty",
 		},
 		&cli.StringFlag{
-			Name:  "m",
+			Name:  "mem",
 			Usage: "memory limit",
 		},
 		&cli.StringFlag{
 			Name:  "cpumax",
 			Usage: "cpu limit",
 		},
-		&cli.StringFlag{
-			Name:  "cpuset",
-			Usage: "cpuset limit",
-		},
+		//&cli.StringFlag{
+		//	Name:  "cpuset",
+		//	Usage: "cpuset limit",
+		//},
 	},
 	Action: func(ctx *cli.Context) error {
 		if ctx.NArg() < 1 {
@@ -47,9 +47,9 @@ var runCommand = cli.Command{
 
 		tty := ctx.Bool("ti")
 		resConf := &subsystems.ResourceConfig{
-			MemoryMax: ctx.String("m"),
+			MemoryMax: ctx.String("mem"),
 			CpuMax:    ctx.String("cpumax"),
-			CpuSet:    ctx.String("cpuset"),
+			//CpuSet:    ctx.String("cpuset"),
 		}
 		// Run 准备启动容器
 		Run(tty, cmdArr, resConf)
@@ -82,12 +82,12 @@ func Run(tty bool, comArray []string, res *subsystems.ResourceConfig) {
 	// use ece-cgroup as cgroup name
 	cgroupManager := cgroups.NewCgroupManager("ece-cgroup")
 	defer cgroupManager.Destory()
-	cgroupManager.Set(res)
 	cgroupManager.Apply(parent.Process.Pid)
+	cgroupManager.Set(res)
 
 	sendInitCommand(comArray, writePipe)
 	parent.Wait()
-
+	os.Exit(0)
 }
 
 func sendInitCommand(comArray []string, writePipe *os.File) {

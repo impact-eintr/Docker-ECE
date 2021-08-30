@@ -9,7 +9,7 @@ import (
 
 const usage = `docker-ece is a simple container runtiome implementation.
 The purpose of this project is to learn how docker works and how to
-write a docker by ourselves. Enjpy itm jut for fun`
+write a docker by ourselves. Enjoy it just for fun`
 
 func main() {
 	app := &cli.App{
@@ -28,9 +28,7 @@ func main() {
 		return nil
 	}
 
-	err := app.Run(os.Args)
-	if err != nil {
+	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
 	}
-
 }

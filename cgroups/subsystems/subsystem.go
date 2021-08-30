@@ -3,7 +3,7 @@ package subsystems
 type ResourceConfig struct {
 	MemoryMax string
 	CpuMax    string
-	CpuSet    string
+	//CpuSet    string
 }
 
 type Subsystem interface {

@@ -3,6 +3,7 @@ package subsystems
 import (
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"path"
 	"strconv"
@@ -33,6 +34,7 @@ func (s *MemorySubSystem) Set(cgroupPath string, res *ResourceConfig) error {
 
 func (s *MemorySubSystem) Apply(cgroupPath string, pid int) error {
 	if subsysCgroupPath, err := GetCgroupPath(s.Name(), cgroupPath, false); err == nil {
+		log.Println(cgroupPath, subsysCgroupPath, pid)
 		if err := ioutil.WriteFile(
 			path.Join(subsysCgroupPath, "cgroup.procs"),
 			[]byte(strconv.Itoa(pid)), 0644); err != nil {

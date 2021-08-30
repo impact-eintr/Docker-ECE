@@ -1,8 +1,8 @@
 package cgroups
 
 import (
-	log "github.com/Sirupsen/logrus"
 	"github.com/impact-eintr/Docker-ECE/cgroups/subsystems"
+	log "github.com/sirupsen/logrus"
 )
 
 type CgroupManager struct {

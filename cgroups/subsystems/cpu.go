@@ -18,6 +18,8 @@ func (s *CpuSubSystem) Name() string {
 func (s *CpuSubSystem) Set(cgroupPath string, res *ResourceConfig) error {
 	if subsysCgroupPath, err := GetCgroupPath(s.Name(), cgroupPath, true); err == nil {
 		if res.CpuMax != "" {
+			cpuMax, _ := strconv.Atoi(res.CpuMax)
+			res.CpuMax = fmt.Sprintf("%d %d", cpuMax, 10000)
 			if err := ioutil.WriteFile(
 				path.Join(subsysCgroupPath, "cpu.max"),
 				[]byte(res.CpuMax), 0644); err != nil {

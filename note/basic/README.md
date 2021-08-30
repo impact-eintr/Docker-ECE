@@ -539,8 +539,8 @@ OverlayFS是一种和AUFS很类似的文件系统，与AUFS相比，OverlayFS有
 2. 从3.18开始，就进入了Linux内核主线；
 3. 可能更快一些。
 　　因此，OverlayFS在Docker社区关注度提高很快，被很多人认为是AUFS的继承者。就像宣称的一样，OverlayFS还很年轻。所以，在生成环境使用它时，还是需要更加当心。
-　　　　Docker的overlay存储驱动利用了很多OverlayFS特性来构建和管理镜像与容器的磁盘结构。
-　　　　自从Docker1.12起，Docker也支持overlay2存储驱动，相比于overlay来说，overlay2在inode优化上更加高效。但overlay2驱动只兼容Linux kernel4.0以上的版本。
+　　　　　　Docker的overlay存储驱动利用了很多OverlayFS特性来构建和管理镜像与容器的磁盘结构。
+　　　　　　自从Docker1.12起，Docker也支持overlay2存储驱动，相比于overlay来说，overlay2在inode优化上更加高效。但overlay2驱动只兼容Linux kernel4.0以上的版本。
 > 注意：自从OverlayFS加入kernel主线后，它在kernel模块中的名称就被从overlayfs改为overlay了。但是为了在本文中区别，我们使用OverlayFS代表整个文件系统，而overlay/overlay2表示Docker的存储驱动。
 
 ``` bash
@@ -838,14 +838,14 @@ workdir=9186877cdf386d0a3b016149cf30c208f326dca307529e646afce5b3f83f5304/work)
  - 只存在于容器层的文件。如果容器只读权限打开一个文件，并且容器只存在于容器层（upperdir）而不是镜像层（lowerdir），那么直接从镜像层读取文件，无额外性能损耗。
  - 文件同时存在于容器层和镜像层。那么会读取容器层的文件，因为容器层（upperdir）隐藏了镜像层（lowerdir）的同名文件。因此，也没有额外的性能损耗。
 　　有以下场景容器修改文件。
-　　 第一次写一个文件。容器第一次写一个已经存在的文件，容器层不存在这个文件。overlay/overlay2驱动执行copy-up操作，将文件从镜像层拷贝到容器层。然后容器修改容器层新拷贝的文件。
-　　　　　　然而，OverlayFS工作在文件级别而不是块级别。也就是说所有的OverlayFS的copy-up操作都会拷贝整个文件，即使文件非常大但却只修改了一小部分，这在容器写性能上有着显著的影响。不过，有两个方面值得注意：
-　　　　　　　▷ copy-up操作只发生在第一次写文件时。后续的对同一个文件的写操作都是直接针对拷贝到容器层的那个新文件。
-　　　　　　　▷ OverlayFS只工作在两层中。这比AUFS要在多层镜像中查找时性能要好。
-　　 删除文件和目录。删除文件时，容器会在镜像层创建一个whiteout文件，而镜像层的文件并没有删除。但是，whiteout文件会隐藏它。
-　　　　　　容器中删除一个目录，容器层会创建一个不透明目录。这和whiteout文件隐藏镜像层的文件类似。
-　　 重命名目录。只有在源路径和目的路径都在顶层容器层时，才允许执行rename操作。否则，会返回EXDEV。
-　　　　　　因此，你的应用需要能够处理EXDEV，并且回滚操作，执行替代的“拷贝和删除”策略。
+　　　　 第一次写一个文件。容器第一次写一个已经存在的文件，容器层不存在这个文件。overlay/overlay2驱动执行copy-up操作，将文件从镜像层拷贝到容器层。然后容器修改容器层新拷贝的文件。
+　　　　　　　　然而，OverlayFS工作在文件级别而不是块级别。也就是说所有的OverlayFS的copy-up操作都会拷贝整个文件，即使文件非常大但却只修改了一小部分，这在容器写性能上有着显著的影响。不过，有两个方面值得注意：
+　　　　　　　　　▷ copy-up操作只发生在第一次写文件时。后续的对同一个文件的写操作都是直接针对拷贝到容器层的那个新文件。
+　　　　　　　　　▷ OverlayFS只工作在两层中。这比AUFS要在多层镜像中查找时性能要好。
+　　　　 删除文件和目录。删除文件时，容器会在镜像层创建一个whiteout文件，而镜像层的文件并没有删除。但是，whiteout文件会隐藏它。
+　　　　　　　　容器中删除一个目录，容器层会创建一个不透明目录。这和whiteout文件隐藏镜像层的文件类似。
+　　　　 重命名目录。只有在源路径和目的路径都在顶层容器层时，才允许执行rename操作。否则，会返回EXDEV。
+　　　　　　　　因此，你的应用需要能够处理EXDEV，并且回滚操作，执行替代的“拷贝和删除”策略。
 
 在Docker中配置overlay/overlay2存储驱动
 　　为了给Docker配置overlay存储驱动，你的Docker host必须运行在Linux kernel3.18版本之上，而且加载了overlay内核驱动。对于overlay2驱动，kernel版本必须在4.0或以上。OverlayFS可以运行在大多数Linux文件系统之上。不过，现在最建议在生产环境中使用ext4。
@@ -870,7 +870,7 @@ overlay               147456  2
 
 ```
 
-# 如果上面命令没有输出，说明驱动没有加载，可以如下操作
+如果上面命令没有输出，说明驱动没有加载，可以如下操作
 
 ``` bash
 $ modprobe overlay
