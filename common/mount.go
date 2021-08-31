@@ -1,7 +1,6 @@
 package common
 
 import (
-	"log"
 	"strings"
 	"syscall"
 )
@@ -13,10 +12,9 @@ var (
 
 // 获取所有的挂载点
 func FindMountPoint() ([]string, error) {
-	v := Must2(Exec("mount"))
+	v := Must2(Exec2("mount"))
 	switch tp := v.(type) {
 	case string:
-		log.Println(tp)
 		return parseMountInfo(tp), nil
 	default:
 		return nil, LogAndErrorf("Unexpected type: %T", tp)
@@ -25,6 +23,8 @@ func FindMountPoint() ([]string, error) {
 
 func parseMountInfo(info string) (result []string) {
 	arrays := strings.Split(info, "\n")
+	arrays = arrays[:len(arrays)-1]
+
 	root := DockerRoot
 
 	for _, val := range arrays {
