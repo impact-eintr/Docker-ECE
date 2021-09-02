@@ -18,21 +18,41 @@ var runCommand = cli.Command{
           mydocker run -ti [command ]`,
 	Flags: []cli.Flag{
 		&cli.BoolFlag{
-			Name:  "ti",
+			Name:  "it",
 			Usage: "enable tty",
 		},
-		&cli.StringFlag{
-			Name:  "mem",
+		&cli.StringSliceFlag{
+			Name:  "m",
 			Usage: "memory limit",
 		},
 		&cli.StringFlag{
 			Name:  "cpumax",
 			Usage: "cpu limit",
 		},
-		//&cli.StringFlag{
-		//	Name:  "cpuset",
-		//	Usage: "cpuset limit",
-		//},
+		&cli.StringFlag{
+			Name:  "cpuset",
+			Usage: "cpuset limit",
+		},
+		&cli.StringFlag{
+			Name:  "v",
+			Usage: "volume",
+		},
+		&cli.BoolFlag{
+			Name:  "d",
+			Usage: "detach container",
+		},
+		&cli.StringFlag{
+			Name:  "name",
+			Usage: "container name",
+		},
+		&cli.StringFlag{
+			Name:  "e",
+			Usage: "container network",
+		},
+		&cli.StringSliceFlag{
+			Name:  "p",
+			Usage: "port mapping",
+		},
 	},
 	Action: func(ctx *cli.Context) error {
 		if ctx.NArg() < 1 {
