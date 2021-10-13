@@ -11,34 +11,35 @@ type CgroupManager struct {
 }
 
 func NewCgroupManager(path string) *CgroupManager {
-	return &CgroupManager{Path: path}
-}
-
-// 将新的进程加入当前的cgroup中
-func (c *CgroupManager) Apply(pid int) error {
-	for _, subSysIns := range subsystems.SubsystemsIns {
-		subSysIns.Apply(c.Path, pid)
+	return &CgroupManager{
+		Path: path,
 	}
-	return nil
-
 }
 
-// 设置cgroup 资源限制
+func (c *CgroupManager) Apply(pid int) error {
+	//for _, subSysIns := range subsystems.SubsystemIns {
+	//	subSysIns.Apply(c.Path, pid)
+	//}
+	subsystems.SubsystemIns[0].Apply(c.Path, pid)
+	return nil
+}
+
 func (c *CgroupManager) Set(res *subsystems.ResourceConfig) error {
-	for _, subSysIns := range subsystems.SubsystemsIns {
+	for _, subSysIns := range subsystems.SubsystemIns {
 		subSysIns.Set(c.Path, res)
 	}
 	return nil
-
 }
 
-// 释放cgroup
-func (c *CgroupManager) Destory() error {
-	for _, subSysIns := range subsystems.SubsystemsIns {
-		if err := subSysIns.Remove(c.Path); err != nil {
-			log.Warn("remove cgroup fail %v", err)
-		}
+func (c *CgroupManager) Destroy() error {
+	//for _, subSysIns := range subsystems.SubsystemIns {
+	//	if err := subSysIns.Remove(c.Path); err != nil {
+	//		log.Warnf("remove cgroup fail %v", err)
+	//	}
+	//}
+
+	if err := subsystems.SubsystemIns[0].Remove(c.Path); err != nil {
+		log.Warnf("remove cgroup fail %v", err)
 	}
 	return nil
-
 }

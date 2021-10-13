@@ -1,9 +1,9 @@
 package subsystems
 
 type ResourceConfig struct {
-	MemoryMax string
-	CpuMax    string
-	//CpuSet    string
+	MemoryLimit string
+	Cpu         string
+	CpuSet      string
 }
 
 type Subsystem interface {
@@ -14,9 +14,9 @@ type Subsystem interface {
 }
 
 var (
-	SubsystemsIns = []Subsystem{
-		&MemorySubSystem{},
+	SubsystemIns = []Subsystem{
+		&CpuSetSubSystem{},
 		&CpuSubSystem{},
-		//&CpuSetSubSystem{},
+		&MemorySubSystem{},
 	}
 )

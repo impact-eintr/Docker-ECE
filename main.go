@@ -4,22 +4,22 @@ import (
 	"os"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli"
 )
 
-const usage = `docker-ece is a simple container runtiome implementation.
-The purpose of this project is to learn how docker works and how to
-write a docker by ourselves. Enjoy it just for fun`
+const usage = "Docker-ECE is a simple container runtime implementation"
 
 func main() {
-	app := &cli.App{
-		Name:  "docker-ece",
-		Usage: usage,
-	}
 
-	app.Commands = []*cli.Command{
-		&initCommand,
-		&runCommand,
+	app := cli.NewApp()
+	app.Name = "Docker-ECE"
+	app.Usage = usage
+
+	log.Println(usage)
+
+	app.Commands = []cli.Command{
+		initCommand,
+		runCommand,
 	}
 
 	app.Before = func(context *cli.Context) error {
@@ -31,4 +31,5 @@ func main() {
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
 	}
+
 }

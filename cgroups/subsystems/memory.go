@@ -12,17 +12,13 @@ import (
 type MemorySubSystem struct {
 }
 
-func (s *MemorySubSystem) Name() string {
-	return "memory"
-}
-
 func (s *MemorySubSystem) Set(cgroupPath string, res *ResourceConfig) error {
-	if subsysCgroupPath, err := GetCgroupPath(s.Name(), cgroupPath, true); err == nil {
-		if res.MemoryMax != "" {
+	log.Println("test")
+	if subsysCgroupPath, err := GetCgroupPath(cgroupPath, true); err == nil {
+		if res.MemoryLimit != "" {
 			if err := ioutil.WriteFile(
-				path.Join(subsysCgroupPath, "memory.max"),
-				[]byte(res.MemoryMax), 0644); err != nil {
-
+				path.Join(subsysCgroupPath, s.Name()+".max"),
+				[]byte(res.MemoryLimit), 0644); err != nil {
 				return fmt.Errorf("set cgroup memory fail %v", err)
 			}
 		}
@@ -32,8 +28,16 @@ func (s *MemorySubSystem) Set(cgroupPath string, res *ResourceConfig) error {
 	}
 }
 
+func (s *MemorySubSystem) Remove(cgroupPath string) error {
+	if subsysCgroupPath, err := GetCgroupPath(cgroupPath, false); err == nil {
+		return os.RemoveAll(subsysCgroupPath)
+	} else {
+		return err
+	}
+}
+
 func (s *MemorySubSystem) Apply(cgroupPath string, pid int) error {
-	if subsysCgroupPath, err := GetCgroupPath(s.Name(), cgroupPath, false); err == nil {
+	if subsysCgroupPath, err := GetCgroupPath(cgroupPath, false); err == nil {
 		log.Println(cgroupPath, subsysCgroupPath, pid)
 		if err := ioutil.WriteFile(
 			path.Join(subsysCgroupPath, "cgroup.procs"),
@@ -47,10 +51,6 @@ func (s *MemorySubSystem) Apply(cgroupPath string, pid int) error {
 	}
 }
 
-func (s *MemorySubSystem) Remove(cgroupPath string) error {
-	if subsysCgroupPath, err := GetCgroupPath(s.Name(), cgroupPath, false); err == nil {
-		return os.RemoveAll(subsysCgroupPath)
-	} else {
-		return err
-	}
+func (s *MemorySubSystem) Name() string {
+	return "memory"
 }
