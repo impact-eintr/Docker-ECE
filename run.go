@@ -23,7 +23,7 @@ func Run(tty, version bool, comArray []string, res *subsystems.ResourceConfig) {
 	cgroupManager := cgroups.NewCgroupManager("dockerece-cgroup")
 	if version {
 		defer cgroupManager.Destroy2()
-		cgroupManager.Set(res)
+		cgroupManager.Set2(res)
 		cgroupManager.Apply2(parent.Process.Pid)
 	} else {
 		defer cgroupManager.Destroy()

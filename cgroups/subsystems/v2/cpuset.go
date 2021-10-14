@@ -3,7 +3,6 @@ package v2
 import (
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"path"
 	"strconv"
@@ -39,11 +38,9 @@ func (s *CpusetSubSystem) Remove(cgroupPath string) error {
 
 func (s *CpusetSubSystem) Apply(cgroupPath string, pid int) error {
 	if subsysCgroupPath, err := GetCgroupPath(cgroupPath, false); err == nil {
-		log.Println(cgroupPath, subsysCgroupPath, pid)
 		if err := ioutil.WriteFile(
 			path.Join(subsysCgroupPath, "cgroup.procs"),
 			[]byte(strconv.Itoa(pid)), 0644); err != nil {
-
 			return fmt.Errorf("set cgroup proc fail %v", err)
 		}
 		return nil
