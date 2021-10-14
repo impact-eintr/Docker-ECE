@@ -1,4 +1,4 @@
-package subsystems
+package v2
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 
 var Root string
 
-func GetCgroupPath(subsystem string, cgroupPath string, autoCreate bool) (string, error) {
+func GetCgroupPath(cgroupPath string, autoCreate bool) (string, error) {
 
 	var cgroupRoot string
 	if cgroupPath != "" {
@@ -25,8 +25,7 @@ func GetCgroupPath(subsystem string, cgroupPath string, autoCreate bool) (string
 	_, err := os.Stat(path.Join(cgroupRoot, cgroupPath))
 	if err == nil || (autoCreate && os.IsNotExist(err)) {
 		if os.IsNotExist(err) {
-			if err := os.Mkdir(path.Join(cgroupRoot, cgroupPath), 0755); err == nil {
-			} else {
+			if err := os.Mkdir(path.Join(cgroupRoot, cgroupPath), os.ModePerm); err != nil {
 				return "", fmt.Errorf("error create cgroup %v", err)
 			}
 		}
@@ -37,7 +36,6 @@ func GetCgroupPath(subsystem string, cgroupPath string, autoCreate bool) (string
 
 	}
 }
-
 func FindAbsoluteCgroupMountpoint() string {
 	return "/sys/fs/cgroup"
 }
