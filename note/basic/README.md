@@ -538,9 +538,12 @@ OverlayFS是一种和AUFS很类似的文件系统，与AUFS相比，OverlayFS有
 1.  更简单地设计；
 2. 从3.18开始，就进入了Linux内核主线；
 3. 可能更快一些。
-　　因此，OverlayFS在Docker社区关注度提高很快，被很多人认为是AUFS的继承者。就像宣称的一样，OverlayFS还很年轻。所以，在生成环境使用它时，还是需要更加当心。
-　　　　　　Docker的overlay存储驱动利用了很多OverlayFS特性来构建和管理镜像与容器的磁盘结构。
-　　　　　　自从Docker1.12起，Docker也支持overlay2存储驱动，相比于overlay来说，overlay2在inode优化上更加高效。但overlay2驱动只兼容Linux kernel4.0以上的版本。
+
+因此，OverlayFS在Docker社区关注度提高很快，被很多人认为是AUFS的继承者。就像宣称的一样，OverlayFS还很年轻。所以，在生成环境使用它时，还是需要更加当心。
+
+Docker的overlay存储驱动利用了很多OverlayFS特性来构建和管理镜像与容器的磁盘结构。
+
+自从Docker1.12起，Docker也支持overlay2存储驱动，相比于overlay来说，overlay2在inode优化上更加高效。但overlay2驱动只兼容Linux kernel4.0以上的版本。
 > 注意：自从OverlayFS加入kernel主线后，它在kernel模块中的名称就被从overlayfs改为overlay了。但是为了在本文中区别，我们使用OverlayFS代表整个文件系统，而overlay/overlay2表示Docker的存储驱动。
 
 ``` bash
@@ -562,7 +565,7 @@ bin  dev  etc  home  lib  media  mnt  opt  proc  root  run  sbin  srv  sys  tmp 
 
 ```
 
-如上，/var/lib/docker/overlay2/16361198b12618b2234306c6998cd8eb1c55f577a02144913da60dba4ca0c6e5/merged目录即是alpine容器使用的根文件系统。
+如上，`/var/lib/docker/overlay2/16361198b12618b2234306c6998cd8eb1c55f577a02144913da60dba4ca0c6e5/merged`目录即是alpine容器使用的根文件系统。
 
 不过，如果使用每个镜像都需要一个独立的根文件系统的话，那想必磁盘早已拥挤不堪了；且一个镜像可以同时运行多个容器，每个容器对文件的改动该怎么办？
 
@@ -764,8 +767,11 @@ OverlayFS（overlay2）的镜像分层与共享
 　　overlay驱动只工作在一个lower OverlayFS层之上，因此需要硬链接来实现多层镜像，但overlay2驱动原生地支持多层lower OverlayFS镜像（最多128层）。
 　　因此overlay2驱动在合层相关的命令（如build和commit）中提供了更好的性能，与overlay驱动对比，消耗了更少的inode。
 
-overlay2中镜像和容器的磁盘结构
-　　docker pull ubuntu下载了包含5层的镜像，可以看到在/var/lib/docker/overlay2中，有6个目录。
+- overlay2中镜像和容器的磁盘结构
+  - docker pull ubuntu下载了包含5层的镜像，可以看到在/var/lib/docker/overlay2中，有6个目录。
+
+``` bash
+
 
 $ ls -l /var/lib/docker/overlay2
 
@@ -776,8 +782,12 @@ drwx------ 5 root root 4096 Jun 20 07:36 4e9fa83caff3e8f4cc83693fa407a4a9fac9573
 drwx------ 5 root root 4096 Jun 20 07:36 e8876a226237217ec61c4baf238a32992291d059fdac95ed6303bdff3f59cff5
 drwx------ 5 root root 4096 Jun 20 07:36 eca1e4e1694283e001f200a667bb3cb40853cf2d1b12c29feda7422fed78afed
 drwx------ 2 root root 4096 Jun 20 07:36 l
-　　l目录包含了很多软连接，使用短名称指向了其他层。短名称用于避免mount参数时达到页面大小的限制。
 
+```
+　　
+l目录包含了很多软连接，使用短名称指向了其他层。短名称用于避免mount参数时达到页面大小的限制。
+
+``` bash
 $ ls -l /var/lib/docker/overlay2/l
 
 total 20
@@ -786,7 +796,13 @@ lrwxrwxrwx 1 root root 72 Jun 20 07:36 B3WWEFKBG3PLLV737KZFIASSW7 -> ../4e9fa83c
 lrwxrwxrwx 1 root root 72 Jun 20 07:36 JEYMODZYFCZFYSDABYXD5MF6YO -> ../eca1e4e1694283e001f200a667bb3cb40853cf2d1b12c29feda7422fed78afed/diff
 lrwxrwxrwx 1 root root 72 Jun 20 07:36 NFYKDW6APBCCUCTOUSYDH4DXAT -> ../223c2864175491657d238e2664251df13b63adb8d050924fd1bfcdb278b866f7/diff
 lrwxrwxrwx 1 root root 72 Jun 20 07:36 UL2MW33MSE3Q5VYIKBRN4ZAGQP -> ../e8876a226237217ec61c4baf238a32992291d059fdac95ed6303bdff3f59cff5/diff
-　　在最低层中，有个link文件，包含了前面提到的这个层对应的短名称；还有个diff目录，包含了这个镜像的内容。
+　
+```
+
+　在最低层中，有个link文件，包含了前面提到的这个层对应的短名称；还有个diff目录，包含了这个镜像的内容。
+
+``` bash
+
 
 $ ls /var/lib/docker/overlay2/3a36935c9df35472229c57f4a27105a136f5e4dbef0f87905b2e506e494e348b/
 
@@ -799,7 +815,12 @@ $ cat /var/lib/docker/overlay2/3a36935c9df35472229c57f4a27105a136f5e4dbef0f87905
 $ ls  /var/lib/docker/overlay2/3a36935c9df35472229c57f4a27105a136f5e4dbef0f87905b2e506e494e348b/diff
 
 bin  boot  dev  etc  home  lib  lib64  media  mnt  opt  proc  root  run  sbin  srv  sys  tmp  usr  var
-　　第二底层中，lower文件指出了该层的组成。该目录还有diff、merged和work目录。
+　
+```
+　第二底层中，lower文件指出了该层的组成。该目录还有diff、merged和work目录。
+
+``` bash
+
 
 $ ls /var/lib/docker/overlay2/223c2864175491657d238e2664251df13b63adb8d050924fd1bfcdb278b866f7
 
@@ -812,13 +833,18 @@ l/6Y5IM2XC7TSNIJZZFLJCS6I4I4
 $ ls /var/lib/docker/overlay2/223c2864175491657d238e2664251df13b63adb8d050924fd1bfcdb278b866f7/diff/
 
 etc  sbin  usr  var
-　　运行容器包含的目录同样有着类似的文件和目录。注意在lower文件中，使用:符号来分割不同的底层，并且顺序是从高层到底层。
+　
+```
+　运行容器包含的目录同样有着类似的文件和目录。注意在lower文件中，使用:符号来分割不同的底层，并且顺序是从高层到底层。
 
+``` bash
 $ ls -l /var/lib/docker/overlay/<directory-of-running-container>
 
 $ cat /var/lib/docker/overlay/<directory-of-running-container>/lower
 
 l/DJA75GUWHWG7EWICFYX54FIOVT:l/B3WWEFKBG3PLLV737KZFIASSW7:l/JEYMODZYFCZFYSDABYXD5MF6YO:l/UL2MW33MSE3Q5VYIKBRN4ZAGQP:l/NFYKDW6APBCCUCTOUSYDH4DXAT:l/6Y5IM2XC7TSNIJZZFLJCS6I4I4
+
+```
 　　mount的结果如下：
 
 ``` bash

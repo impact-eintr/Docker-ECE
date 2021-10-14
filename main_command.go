@@ -46,6 +46,10 @@ var runCommand = cli.Command{
 			Name:  "cpuset",
 			Usage: "cpuset limit",
 		},
+		cli.StringFlag{
+			Name:  "v",
+			Usage: "volume",
+		},
 	},
 	Action: func(context *cli.Context) error {
 		if len(context.Args()) < 1 {
@@ -67,9 +71,10 @@ var runCommand = cli.Command{
 			Cpu:         context.String("cpu"),
 			Cpuset:      context.String("cpuset"),
 		}
-		// TODO volume containerName network env port
+		volume := context.String("v")
+		// TODO containerName network env port
 
-		Run(tty, version, cmdArray, resConf)
+		Run(tty, version, cmdArray, resConf, volume)
 		return nil
 	},
 }
