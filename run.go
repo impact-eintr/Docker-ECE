@@ -10,7 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func Run(tty bool, comArray []string, res *subsystems.ResourceConfig) {
+func Run(tty, version bool, comArray []string, res *subsystems.ResourceConfig) {
 	parent, writePipe := container.NewParentProcess(tty)
 	if parent == nil {
 		log.Errorf("New parent process error")
@@ -21,10 +21,16 @@ func Run(tty bool, comArray []string, res *subsystems.ResourceConfig) {
 	}
 
 	cgroupManager := cgroups.NewCgroupManager("dockerece-cgroup")
-	defer cgroupManager.Destroy()
+	if version {
+		defer cgroupManager.Destroy2()
+		cgroupManager.Set(res)
+		cgroupManager.Apply2(parent.Process.Pid)
+	} else {
+		defer cgroupManager.Destroy()
+		cgroupManager.Set(res)
+		cgroupManager.Apply(parent.Process.Pid)
+	}
 
-	cgroupManager.Set(res)
-	cgroupManager.Apply(parent.Process.Pid)
 	sendInitCommand(comArray, writePipe)
 	parent.Wait()
 }

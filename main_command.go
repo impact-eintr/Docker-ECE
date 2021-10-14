@@ -30,6 +30,10 @@ var runCommand = cli.Command{
 			Name:  "it",
 			Usage: "enable tty",
 		},
+		cli.BoolFlag{
+			Name:  "cgroup2",
+			Usage: "cgroup version 2",
+		},
 		cli.StringFlag{
 			Name:  "m",
 			Usage: "memory limit",
@@ -53,6 +57,7 @@ var runCommand = cli.Command{
 		}
 
 		tty := context.Bool("it")
+		version := context.Bool("cgroup2")
 		detach := context.Bool("d")
 		if tty && detach {
 			return fmt.Errorf("it and d paramter can not both provided")
@@ -60,11 +65,11 @@ var runCommand = cli.Command{
 		resConf := &subsystems.ResourceConfig{
 			MemoryLimit: context.String("m"),
 			Cpu:         context.String("cpu"),
-			CpuSet:      context.String("cpuset"),
+			Cpuset:      context.String("cpuset"),
 		}
 		// TODO volume containerName network env port
 
-		Run(tty, cmdArray, resConf)
+		Run(tty, version, cmdArray, resConf)
 		return nil
 	},
 }

@@ -2,6 +2,8 @@ package cgroups
 
 import (
 	"github.com/impact-eintr/Docker-ECE/cgroups/subsystems"
+	sub1 "github.com/impact-eintr/Docker-ECE/cgroups/subsystems/v1"
+	sub2 "github.com/impact-eintr/Docker-ECE/cgroups/subsystems/v2"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -16,30 +18,45 @@ func NewCgroupManager(path string) *CgroupManager {
 	}
 }
 
+func (c *CgroupManager) Apply2(pid int) error {
+	sub2.SubsystemIns[0].Apply(c.Path, pid)
+	return nil
+}
+
+func (c *CgroupManager) Set2(res *subsystems.ResourceConfig) error {
+	for _, subSysIns := range sub2.SubsystemIns {
+		subSysIns.Set(c.Path, res)
+	}
+	return nil
+}
+
+func (c *CgroupManager) Destroy2() error {
+	if err := sub2.SubsystemIns[0].Remove(c.Path); err != nil {
+		log.Warnf("remove cgroup fail %v", err)
+	}
+	return nil
+}
+
 func (c *CgroupManager) Apply(pid int) error {
-	//for _, subSysIns := range subsystems.SubsystemIns {
-	//	subSysIns.Apply(c.Path, pid)
-	//}
-	subsystems.SubsystemIns[0].Apply(c.Path, pid)
+	for _, subSysIns := range sub1.SubsystemIns {
+		subSysIns.Apply(c.Path, pid)
+	}
 	return nil
 }
 
 func (c *CgroupManager) Set(res *subsystems.ResourceConfig) error {
-	for _, subSysIns := range subsystems.SubsystemIns {
+	for _, subSysIns := range sub1.SubsystemIns {
 		subSysIns.Set(c.Path, res)
 	}
 	return nil
 }
 
 func (c *CgroupManager) Destroy() error {
-	//for _, subSysIns := range subsystems.SubsystemIns {
-	//	if err := subSysIns.Remove(c.Path); err != nil {
-	//		log.Warnf("remove cgroup fail %v", err)
-	//	}
-	//}
-
-	if err := subsystems.SubsystemIns[0].Remove(c.Path); err != nil {
-		log.Warnf("remove cgroup fail %v", err)
+	for _, subSysIns := range sub1.SubsystemIns {
+		if err := subSysIns.Remove(c.Path); err != nil {
+			log.Warnf("remove cgroup fail %v", err)
+		}
 	}
+
 	return nil
 }

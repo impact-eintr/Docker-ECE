@@ -1,4 +1,4 @@
-package subsystems
+package v2
 
 import (
 	"fmt"
@@ -7,22 +7,19 @@ import (
 	"os"
 	"path"
 	"strconv"
+
+	"github.com/impact-eintr/Docker-ECE/cgroups/subsystems"
 )
 
-type CpuSubSystem struct {
+type CpusetSubSystem struct {
 }
 
-func (s *CpuSubSystem) Set(cgroupPath string, res *ResourceConfig) error {
+func (s *CpusetSubSystem) Set(cgroupPath string, res *subsystems.ResourceConfig) error {
 	if subsysCgroupPath, err := GetCgroupPath(cgroupPath, true); err == nil {
-		if res.Cpu != "" {
-			per, _ := strconv.Atoi(res.Cpu)
-			if per < 0 || per > 100 {
-				return fmt.Errorf("set cgroup cpu fail: resource")
-			}
-			res.Cpu = fmt.Sprintf("%d %d", per*1000, 100000)
+		if res.Cpuset != "" {
 			if err := ioutil.WriteFile(
-				path.Join(subsysCgroupPath, s.Name()+".max"),
-				[]byte(res.Cpu), 0644); err != nil {
+				path.Join(subsysCgroupPath, s.Name()+".cpus"),
+				[]byte(res.Cpuset), 0644); err != nil {
 				return fmt.Errorf("set cgroup cpu fail %v", err)
 			}
 		}
@@ -32,7 +29,7 @@ func (s *CpuSubSystem) Set(cgroupPath string, res *ResourceConfig) error {
 	}
 }
 
-func (s *CpuSubSystem) Remove(cgroupPath string) error {
+func (s *CpusetSubSystem) Remove(cgroupPath string) error {
 	if subsysCgroupPath, err := GetCgroupPath(cgroupPath, false); err == nil {
 		return os.RemoveAll(subsysCgroupPath)
 	} else {
@@ -40,10 +37,9 @@ func (s *CpuSubSystem) Remove(cgroupPath string) error {
 	}
 }
 
-func (s *CpuSubSystem) Apply(cgroupPath string, pid int) error {
+func (s *CpusetSubSystem) Apply(cgroupPath string, pid int) error {
 	if subsysCgroupPath, err := GetCgroupPath(cgroupPath, false); err == nil {
 		log.Println(cgroupPath, subsysCgroupPath, pid)
-		// 注意WriteFile 是截断写
 		if err := ioutil.WriteFile(
 			path.Join(subsysCgroupPath, "cgroup.procs"),
 			[]byte(strconv.Itoa(pid)), 0644); err != nil {
@@ -56,6 +52,6 @@ func (s *CpuSubSystem) Apply(cgroupPath string, pid int) error {
 	}
 }
 
-func (s *CpuSubSystem) Name() string {
-	return "cpu"
+func (s *CpusetSubSystem) Name() string {
+	return "cpuset"
 }
