@@ -13,7 +13,6 @@ type MemorySubSystem struct {
 }
 
 func (s *MemorySubSystem) Set(cgroupPath string, res *ResourceConfig) error {
-	log.Println("test")
 	if subsysCgroupPath, err := GetCgroupPath(cgroupPath, true); err == nil {
 		if res.MemoryLimit != "" {
 			if err := ioutil.WriteFile(

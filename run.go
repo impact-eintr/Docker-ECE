@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -24,7 +23,6 @@ func Run(tty bool, comArray []string, res *subsystems.ResourceConfig) {
 	cgroupManager := cgroups.NewCgroupManager("dockerece-cgroup")
 	defer cgroupManager.Destroy()
 
-	fmt.Println(res)
 	cgroupManager.Set(res)
 	cgroupManager.Apply(parent.Process.Pid)
 	sendInitCommand(comArray, writePipe)
