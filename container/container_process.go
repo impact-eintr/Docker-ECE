@@ -1,20 +1,62 @@
 package container
 
 import (
+	"encoding/base32"
 	"fmt"
+	"math/rand"
 	"os"
 	"os/exec"
 	"strings"
 	"syscall"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 )
 
-func NewParentProcess(tty bool, volume string) (*exec.Cmd, *os.File) {
+var (
+	RUNNING             string = "running"
+	STOP                string = "stopped"
+	Exit                string = "exited"
+	DefaultInfoLocation string = "/var/run/docker-ece/%s/"
+	ConfigName          string = "config.json"
+)
+
+type ContainerInfo struct {
+	Pid         string `json:"pid"`         // 容器的init进程在宿主机上的 PID
+	Id          string `json:"id"`          // 容器Id
+	Name        string `json:"name"`        // 容器名
+	Command     string `json:"command"`     // 容器内init运行命令
+	CreatedTime string `json:"createdTime"` // 创建时间
+	Status      string `json:"status"`      // 容器的状态
+}
+
+func NewId() string {
+	letterBytes := "1234567890"
+	rand.Seed(time.Now().UnixNano())
+	b := make([]byte, 10)
+	for i := range b {
+		b[i] = letterBytes[rand.Intn(len(letterBytes))]
+	}
+	fmt.Println(string(b))
+	return string(b)
+}
+
+func Encode(b []byte) string {
+	return base32.StdEncoding.EncodeToString(b)
+}
+
+type ContainerInit struct {
+	Id       string
+	Id_base  string
+	RootUrl  string
+	MountUrl string
+}
+
+func NewParentProcess(tty bool, volume string) (*ContainerInit, *exec.Cmd, *os.File) {
 	readPipe, writePipe, err := NewPipe()
 	if err != nil {
 		log.Error("New pipe error %v", err)
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	cmd := exec.Command("/proc/self/exe", "init")
@@ -30,14 +72,14 @@ func NewParentProcess(tty bool, volume string) (*exec.Cmd, *os.File) {
 	}
 	cmd.ExtraFiles = []*os.File{readPipe}
 
-	//mntURL := "/home/eintr/Docker/merge"
-	//rootURL := "/home/eintr/Docker"
+	id := NewId()
+	id_base := Encode([]byte(id))
 	imageURL := "/home/eintr/DockerImages"
-	rootURL := "/var/lib/docker-ece"
-	mntURL := "/var/lib/docker-ece/merge"
+	rootURL := "/var/lib/docker-ece/" + id_base
+	mntURL := "/var/lib/docker-ece/" + id_base + "/merge"
 	NewWorkSpace(imageURL, rootURL, mntURL, volume)
 	cmd.Dir = mntURL
-	return cmd, writePipe
+	return &ContainerInit{id, id_base, rootURL, mntURL}, cmd, writePipe
 }
 
 func NewPipe() (*os.File, *os.File, error) {
@@ -97,12 +139,11 @@ func MountVolume(rootURL string, mntURL string, volumeURLs []string) {
 
 func CreateLowerLayer(imageURL, rootURL string) {
 	busyboxURL := rootURL + "/busybox"
-	busyboxTarURL := imageURL + "/busybox.tar"
+	busyboxTarURL := imageURL + "/ubuntu.tar"
 	exist, err := PathExists(busyboxURL)
 	if err != nil {
 		log.Infof("Fail to judge whether dir %s exists. %v", busyboxURL, err)
 	}
-	fmt.Println(busyboxTarURL, busyboxURL)
 	if exist == false {
 		if err := os.Mkdir(busyboxURL, 0777); err != nil {
 			log.Errorf("Mkdir dir %s error. %v", busyboxURL, err)
@@ -161,13 +202,8 @@ func DeleteWorkSpace(rootURL string, mntURL string, volume string) {
 }
 
 func DeleteWriteLayer(rootURL string) {
-	workURL := rootURL + "/work"
-	if err := os.RemoveAll(workURL); err != nil {
-		log.Errorf("Remove dir %s error %v", workURL, err)
-	}
-	upperURL := rootURL + "/upper"
-	if err := os.RemoveAll(upperURL); err != nil {
-		log.Errorf("Remove dir %s error %v", upperURL, err)
+	if err := os.RemoveAll(rootURL); err != nil {
+		log.Errorf("Remove dir %s error %v", rootURL, err)
 	}
 }
 

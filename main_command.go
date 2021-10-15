@@ -31,6 +31,10 @@ var runCommand = cli.Command{
 			Usage: "enable tty",
 		},
 		cli.BoolFlag{
+			Name:  "d",
+			Usage: "detach container",
+		},
+		cli.BoolFlag{
 			Name:  "cgroup2",
 			Usage: "cgroup version 2",
 		},
@@ -49,6 +53,10 @@ var runCommand = cli.Command{
 		cli.StringFlag{
 			Name:  "v",
 			Usage: "volume",
+		},
+		cli.StringFlag{
+			Name:  "name",
+			Usage: "container name",
 		},
 	},
 	Action: func(context *cli.Context) error {
@@ -72,10 +80,10 @@ var runCommand = cli.Command{
 			Cpuset:      context.String("cpuset"),
 		}
 		volume := context.String("v")
+		containerName := context.String("name")
+		// TODO network env port
 
-		// TODO containerName network env port
-
-		Run(tty, version, cmdArray, resConf, volume)
+		Run(tty, version, cmdArray, resConf, volume, containerName)
 		return nil
 	},
 }
@@ -89,6 +97,15 @@ var commitCommand = cli.Command{
 		}
 		imageName := context.Args().Get(0)
 		commitContainer(imageName)
+		return nil
+	},
+}
+
+var listCommand = cli.Command{
+	Name:  "ps",
+	Usage: "list all the containers",
+	Action: func(context *cli.Context) error {
+		ListContainers()
 		return nil
 	},
 }
