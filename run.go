@@ -33,8 +33,8 @@ func Run(tty, version bool, comArray []string, res *subsystems.ResourceConfig, v
 
 	sendInitCommand(comArray, writePipe)
 	parent.Wait()
-	mntURL := "/home/eintr/Docker/merge"
-	rootURL := "/home/eintr/Docker"
+	rootURL := "/var/lib/docker-ece"
+	mntURL := "/var/lib/docker-ece/merge"
 	container.DeleteWorkSpace(rootURL, mntURL, volume)
 }
 

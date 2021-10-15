@@ -30,9 +30,12 @@ func NewParentProcess(tty bool, volume string) (*exec.Cmd, *os.File) {
 	}
 	cmd.ExtraFiles = []*os.File{readPipe}
 
-	mntURL := "/home/eintr/Docker/merge"
-	rootURL := "/home/eintr/Docker"
-	NewWorkSpace(rootURL, mntURL, volume)
+	//mntURL := "/home/eintr/Docker/merge"
+	//rootURL := "/home/eintr/Docker"
+	imageURL := "/home/eintr/DockerImages"
+	rootURL := "/var/lib/docker-ece"
+	mntURL := "/var/lib/docker-ece/merge"
+	NewWorkSpace(imageURL, rootURL, mntURL, volume)
 	cmd.Dir = mntURL
 	return cmd, writePipe
 }
@@ -45,8 +48,11 @@ func NewPipe() (*os.File, *os.File, error) {
 	return read, write, nil
 }
 
-func NewWorkSpace(rootURL string, mntURL string, volume string) {
-	CreateLowerLayer(rootURL)
+func NewWorkSpace(imageURL, rootURL, mntURL, volume string) {
+	if err := os.Mkdir(rootURL, 0777); err != nil {
+		log.Errorf("Mkdir dir %s error. %v", rootURL, err)
+	}
+	CreateLowerLayer(imageURL, rootURL)
 	CreateUpperLayer(rootURL)
 	CreateWorkDir(rootURL)
 
@@ -89,9 +95,9 @@ func MountVolume(rootURL string, mntURL string, volumeURLs []string) {
 	}
 }
 
-func CreateLowerLayer(resource string) {
-	busyboxURL := resource + "/busybox"
-	busyboxTarURL := resource + "/busybox.tar"
+func CreateLowerLayer(imageURL, rootURL string) {
+	busyboxURL := rootURL + "/busybox"
+	busyboxTarURL := imageURL + "/busybox.tar"
 	exist, err := PathExists(busyboxURL)
 	if err != nil {
 		log.Infof("Fail to judge whether dir %s exists. %v", busyboxURL, err)

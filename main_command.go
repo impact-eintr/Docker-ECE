@@ -72,9 +72,23 @@ var runCommand = cli.Command{
 			Cpuset:      context.String("cpuset"),
 		}
 		volume := context.String("v")
+
 		// TODO containerName network env port
 
 		Run(tty, version, cmdArray, resConf, volume)
+		return nil
+	},
+}
+
+var commitCommand = cli.Command{
+	Name:  "commit",
+	Usage: "commit a container into images",
+	Action: func(context *cli.Context) error {
+		if len(context.Args()) < 1 {
+			return fmt.Errorf("Missing container name")
+		}
+		imageName := context.Args().Get(0)
+		commitContainer(imageName)
 		return nil
 	},
 }
