@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 
 	log "github.com/sirupsen/logrus"
@@ -29,8 +30,8 @@ func NewParentProcess(tty bool, volume string) (*exec.Cmd, *os.File) {
 	}
 	cmd.ExtraFiles = []*os.File{readPipe}
 
-	mntURL := "/home/eintr/Docker/merge/"
-	rootURL := "/home/eintr/Docker/"
+	mntURL := "/home/eintr/Docker/merge"
+	rootURL := "/home/eintr/Docker"
 	NewWorkSpace(rootURL, mntURL, volume)
 	cmd.Dir = mntURL
 	return cmd, writePipe
@@ -51,17 +52,51 @@ func NewWorkSpace(rootURL string, mntURL string, volume string) {
 
 	CreateMountPoint(rootURL, mntURL) // 创建merge层
 	if volume != "" {
-		// TODO
+		volumeURLs := volumeUrlExtract(volume)
+		length := len(volumeURLs)
+		if length == 2 && volumeURLs[0] != "" && volumeURLs[1] != "" {
+			MountVolume(rootURL, mntURL, volumeURLs)
+			log.Infof("%q", volumeURLs)
+		} else {
+			log.Infof("Vplume parameter input is not correct.")
+		}
+	}
+}
+
+func volumeUrlExtract(volume string) []string {
+	var volumeURLs []string
+	volumeURLs = strings.Split(volume, ":")
+	return volumeURLs
+}
+
+func MountVolume(rootURL string, mntURL string, volumeURLs []string) {
+	parentUrl := volumeURLs[0]
+	if err := os.Mkdir(parentUrl, 0777); err != nil {
+		log.Infof("Mkdir parent dir %s error. %v", parentUrl, err)
+	}
+
+	containerUrl := volumeURLs[1]
+	containerVolumeURL := mntURL + containerUrl
+	if err := os.Mkdir(containerVolumeURL, 0777); err != nil {
+		log.Infof("Mkdir container dir %s error. %v", containerVolumeURL, err)
+	}
+
+	cmd := exec.Command("mount", "--bind", parentUrl, containerVolumeURL)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Errorf("%v", err)
 	}
 }
 
 func CreateLowerLayer(resource string) {
-	busyboxURL := resource
-	busyboxTarURL := resource + "busybox.tar"
+	busyboxURL := resource + "/busybox"
+	busyboxTarURL := resource + "/busybox.tar"
 	exist, err := PathExists(busyboxURL)
 	if err != nil {
 		log.Infof("Fail to judge whether dir %s exists. %v", busyboxURL, err)
 	}
+	fmt.Println(busyboxTarURL, busyboxURL)
 	if exist == false {
 		if err := os.Mkdir(busyboxURL, 0777); err != nil {
 			log.Errorf("Mkdir dir %s error. %v", busyboxURL, err)
@@ -74,14 +109,14 @@ func CreateLowerLayer(resource string) {
 }
 
 func CreateUpperLayer(rootURL string) {
-	upperURL := rootURL + "upper/"
+	upperURL := rootURL + "/upper"
 	if err := os.Mkdir(upperURL, 0777); err != nil {
 		log.Errorf("Mkdir dir %s error. %v", upperURL, err)
 	}
 }
 
 func CreateWorkDir(rootURL string) {
-	workURL := rootURL + "work/"
+	workURL := rootURL + "/work"
 	if err := os.Mkdir(workURL, 0777); err != nil {
 		log.Errorf("Mkdir dir %s error. %v", workURL, err)
 	}
@@ -91,9 +126,9 @@ func CreateMountPoint(rootURL string, mntURL string) {
 	if err := os.Mkdir(mntURL, 0777); err != nil {
 		log.Errorf("Mkdir dir %s error.%v", mntURL, err)
 	}
-	dirs := "lowerdir=" + rootURL + "busybox" +
-		",upperdir=" + rootURL + "upper" +
-		",workdir=" + rootURL + "work"
+	dirs := "lowerdir=" + rootURL + "/busybox" +
+		",upperdir=" + rootURL + "/upper" +
+		",workdir=" + rootURL + "/work"
 
 	fmt.Println(dirs)
 	cmd := exec.Command("mount", "-t", "overlay", "overlay", "-o", dirs, mntURL)
@@ -106,7 +141,13 @@ func CreateMountPoint(rootURL string, mntURL string) {
 
 func DeleteWorkSpace(rootURL string, mntURL string, volume string) {
 	if volume != "" {
-
+		volumeURLs := volumeUrlExtract(volume)
+		length := len(volumeURLs)
+		if length == 2 && volumeURLs[0] != "" && volumeURLs[1] != "" {
+			DeleteMountPointWithVolume(rootURL, mntURL, volumeURLs)
+		} else {
+			DeleteMountPoint(rootURL, mntURL)
+		}
 	} else {
 		DeleteMountPoint(rootURL, mntURL)
 	}
@@ -114,13 +155,34 @@ func DeleteWorkSpace(rootURL string, mntURL string, volume string) {
 }
 
 func DeleteWriteLayer(rootURL string) {
-	workURL := rootURL + "work/"
+	workURL := rootURL + "/work"
 	if err := os.RemoveAll(workURL); err != nil {
 		log.Errorf("Remove dir %s error %v", workURL, err)
 	}
-	upperURL := rootURL + "upper/"
+	upperURL := rootURL + "/upper"
 	if err := os.RemoveAll(upperURL); err != nil {
 		log.Errorf("Remove dir %s error %v", upperURL, err)
+	}
+}
+
+func DeleteMountPointWithVolume(rootURL string, mntURL string, volumeURLs []string) {
+	containerUrl := mntURL + volumeURLs[1]
+	cmd := exec.Command("umount", containerUrl)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Errorf("%v", err)
+	}
+
+	cmd = exec.Command("umount", mntURL)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Errorf("%v", err)
+	}
+
+	if err := os.RemoveAll(mntURL); err != nil {
+		log.Errorf("Remove dir %s error %v", mntURL, err)
 	}
 }
 
