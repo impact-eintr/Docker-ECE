@@ -62,6 +62,10 @@ var runCommand = cli.Command{
 			Name:  "name",
 			Usage: "container name",
 		},
+		cli.StringSliceFlag{
+			Name:  "e",
+			Usage: "set environment",
+		},
 	},
 	Action: func(context *cli.Context) error {
 		if len(context.Args()) < 1 {
@@ -90,9 +94,11 @@ var runCommand = cli.Command{
 		imageName := context.String("image")
 		// container name
 		containerName := context.String("name")
-		// TODO network env port
+		// env list
+		envSlice := context.StringSlice("e")
+		// TODO network port
 
-		Run(tty, version, cmdArray, resConf, volume, imageName, containerName)
+		Run(tty, version, cmdArray, resConf, volume, imageName, containerName, envSlice)
 		return nil
 	},
 }
@@ -151,6 +157,18 @@ var execCommand = cli.Command{
 			commandArray = append(commandArray, arg)
 		}
 		ExecContainer(containerName, commandArray)
+		return nil
+	},
+}
+var startCommand = cli.Command{
+	Name:  "start",
+	Usage: "start a container",
+	Action: func(context *cli.Context) error {
+		if len(context.Args()) < 1 {
+			return fmt.Errorf("Missing container name")
+		}
+		containerName := context.Args().Get(0)
+		startContainer(containerName)
 		return nil
 	},
 }

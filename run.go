@@ -29,14 +29,15 @@ type ContainerInfo struct {
 	Command     string `json:"command"`     // 容器内init运行命令
 	CreatedTime string `json:"createdTime"` // 创建时间
 	Status      string `json:"status"`      // 容器的状态
+	ImageUrl    string `json:"imageUrl"`    // 容器挂载镜像 这个其实应该可以省略
 	RootUrl     string `json:"rootUrl"`     // 容器挂载目录集的根目录
 }
 
 func Run(tty, version bool, comArray []string, res *subsystems.ResourceConfig,
-	volume, imageName, containerName string) {
+	volume, imageName, containerName string, envSlice []string) {
 
 	// containerInit 包含容器初始化时需要记录的一些信息
-	containerInit, parent, writePipe := container.NewParentProcess(tty, imageName, volume)
+	containerInit, parent, writePipe := container.NewParentProcess(tty, imageName, volume, envSlice)
 	if parent == nil {
 		log.Errorf("New parent process error")
 		return
@@ -45,8 +46,8 @@ func Run(tty, version bool, comArray []string, res *subsystems.ResourceConfig,
 		log.Errorf("New parent process error: %v", err)
 	}
 	// record container info
-	containerName, err := recordContainerInfo(containerInit.Id, parent.Process.Pid,
-		containerName, comArray, containerInit.RootUrl)
+	containerName, err := recordContainerInfo(containerInit, parent.Process.Pid,
+		containerName, comArray)
 	if err != nil {
 		log.Errorf("Record container info error %v", err)
 		return
@@ -76,22 +77,25 @@ func Run(tty, version bool, comArray []string, res *subsystems.ResourceConfig,
 	}
 }
 
-func recordContainerInfo(containerId string, containerPID int, containerName string,
-	commandArray []string, containerRootUrl string) (string, error) {
+func recordContainerInfo(containerInit *container.ContainerInit, containerPID int,
+	containerName string, commandArray []string) (string, error) {
 
 	createTime := time.Now().Format("2006-01-02 15:04:05")
 	command := strings.Join(commandArray, "")
+	var flag bool
 	if containerName == "" {
-		containerName = containerId
+		containerName = containerInit.Id
+		flag = true
 	}
 	containerInfo := &container.ContainerInfo{
-		Id:          containerId,
+		Id:          containerInit.Id,
 		Pid:         strconv.Itoa(containerPID),
 		Name:        containerName,
 		Command:     command,
 		CreatedTime: createTime,
 		Status:      container.RUNNING,
-		RootUrl:     containerRootUrl,
+		ImageUrl:    containerInit.ImageUrl,
+		RootUrl:     containerInit.RootUrl,
 	}
 
 	jsonBytes, err := json.Marshal(containerInfo)
@@ -101,16 +105,19 @@ func recordContainerInfo(containerId string, containerPID int, containerName str
 	}
 	jsonStr := string(jsonBytes)
 
-	dirUrl := fmt.Sprintf(container.DefaultInfoLocation, containerId)
-	linkUrl := fmt.Sprintf(container.DefaultInfoLocation[:len(container.DefaultInfoLocation)-1],
-		containerName)
-	if err := os.Symlink(dirUrl, linkUrl); err != nil {
-		log.Errorf("Link error %s error %v", dirUrl, err)
-		return "", err
-	}
+	dirUrl := fmt.Sprintf(container.DefaultInfoLocation, containerInit.Id)
 	if err := os.MkdirAll(dirUrl, 0622); err != nil {
 		log.Errorf("Mkdir error %s error %v", dirUrl, err)
 		return "", err
+	}
+
+	if !flag {
+		linkUrl := fmt.Sprintf(container.DefaultInfoLocation[:len(container.DefaultInfoLocation)-1],
+			containerName)
+		if err := os.Symlink(dirUrl, linkUrl); err != nil {
+			log.Errorf("Link error %s error %v", dirUrl, err)
+			return "", err
+		}
 	}
 
 	fileName := dirUrl + container.ConfigName

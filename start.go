@@ -7,29 +7,35 @@ import (
 
 	"github.com/impact-eintr/Docker-ECE/container"
 	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 // start 指令
 func startContainer(containerName string) {
-	//init, err := GetContainerInitByName(containerName)
-	//if err != nil {
-	//	logrus.Errorf("Get contaienr pid by name %s error %v", containerName, err)
-	//	return
-	//}
-	// TODO  重新挂载 mnt
-	// container.CreateMountPoint(init.RootUrl)
-
-	// 把新的容器信息写回配置文件
-	containerInfo, err := getContainerInfoByName(containerName)
+	info, err := getContainerInfoByName(containerName)
 	if err != nil {
 		logrus.Errorf("Get container %s info error %v", containerName, err)
 		return
 	}
 
-	containerInfo.Status = container.RUNNING
-	containerInfo.Pid = " " // TODO 获取新的PID
+	parent, writePipe := container.ReNewParentProcess(info, "")
+	if parent == nil {
+		log.Errorf("New parent process error")
+		return
+	}
+	if err := parent.Start(); err != nil {
+		log.Errorf("New parent process error: %v", err)
+	}
 
-	newContentBytes, err := json.Marshal(containerInfo)
+	// TODO  cgroup 之后再支持
+
+	sendInitCommand([]string{info.Command}, writePipe)
+
+	// 把新的容器信息写回配置文件
+	info.Status = container.RUNNING
+	info.Pid = fmt.Sprintf("%d", parent.Process.Pid) // TODO 获取新的PID
+
+	newContentBytes, err := json.Marshal(info)
 	if err != nil {
 		logrus.Errorf("Json marshal %s error %v", containerName, err)
 		return
@@ -53,5 +59,6 @@ func GetContainerInitByName(containerName string) (*container.ContainerInit, err
 	if err := json.Unmarshal(contentBytes, &containerInfo); err != nil {
 		return nil, err
 	}
-	return &container.ContainerInit{}, nil
+	return &container.ContainerInit{containerInfo.Id, "",
+		containerInfo.ImageUrl, containerInfo.RootUrl}, nil
 }

@@ -30,7 +30,15 @@ type ContainerInfo struct {
 	Command     string `json:"command"`     // 容器内init运行命令
 	CreatedTime string `json:"createdTime"` // 创建时间
 	Status      string `json:"status"`      // 容器的状态
+	ImageUrl    string `json:"imageUrl"`    // 容器挂载镜像 这个其实应该可以省略
 	RootUrl     string `json:"rootUrl"`     // 容器挂载目录集的根目录
+}
+
+type ContainerInit struct {
+	Id       string
+	Id_base  string
+	ImageUrl string
+	RootUrl  string
 }
 
 func NewId() string {
@@ -47,14 +55,7 @@ func Encode(b []byte) string {
 	return base32.StdEncoding.EncodeToString(b)
 }
 
-type ContainerInit struct {
-	Id       string
-	Id_base  string
-	ImageUrl string
-	RootUrl  string
-}
-
-func NewParentProcess(tty bool, imageName, volume string) (*ContainerInit, *exec.Cmd, *os.File) {
+func NewParentProcess(tty bool, imageName, volume string, envSlice []string) (*ContainerInit, *exec.Cmd, *os.File) {
 	readPipe, writePipe, err := NewPipe()
 	if err != nil {
 		log.Error("New pipe error %v", err)
@@ -79,6 +80,7 @@ func NewParentProcess(tty bool, imageName, volume string) (*ContainerInit, *exec
 
 	cmd.ExtraFiles = []*os.File{readPipe}
 	NewWorkSpace(imageURL, rootURL, mntURL, volume)
+	cmd.Env = append(os.Environ(), envSlice...)
 	cmd.Dir = mntURL
 
 	// 构造日志输出
@@ -119,6 +121,46 @@ func NewParentProcess(tty bool, imageName, volume string) (*ContainerInit, *exec
 		cmd.Stdout = stdLogFile
 	}
 	return &ContainerInit{id, id_base, imageURL, rootURL}, cmd, writePipe
+}
+
+// TODO 暂时不支持volume
+func ReNewParentProcess(info *ContainerInfo, volume string) (*exec.Cmd, *os.File) {
+	readPipe, writePipe, err := NewPipe()
+	if err != nil {
+		log.Error("New pipe error %v", err)
+		return nil, nil
+	}
+
+	cmd := exec.Command("/proc/self/exe", "init")
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS |
+			syscall.CLONE_NEWNET | syscall.CLONE_NEWIPC,
+	}
+
+	// 从镜像构造容器
+	//id_base := info.RootUrl[len("/var/lib/docker-ece/"):]
+	mntURL := info.RootUrl + "/merge"
+
+	cmd.ExtraFiles = []*os.File{readPipe}
+	NewWorkSpace(info.ImageUrl, info.RootUrl, mntURL, volume)
+	cmd.Dir = mntURL
+
+	// 构造日志输出
+	// 生成容器对应日志目录
+	dirURL := fmt.Sprintf(DefaultInfoLocation, info.Id)
+	if err := os.MkdirAll(dirURL, 0622); err != nil && !os.IsExist(err) {
+		log.Errorf("NewParentProcess mkdir %serror %v", dirURL, err)
+		return nil, nil
+	}
+	stdLogFilePath := dirURL + ContainerLogFile
+	stdLogFile, err := os.OpenFile(stdLogFilePath,
+		os.O_WRONLY|os.O_CREATE|os.O_SYNC|os.O_APPEND, 0755)
+	if err != nil {
+		log.Errorf("NewParentProcess create file %s error %v", stdLogFilePath, err)
+		return nil, nil
+	}
+	cmd.Stdout = stdLogFile
+	return cmd, writePipe
 }
 
 func NewPipe() (*os.File, *os.File, error) {
