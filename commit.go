@@ -7,8 +7,12 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func commitContainer(imagesName string) {
-	mntURL := "/var/lib/docker-ece/merge"
+func commitContainer(containerName, imagesName string) {
+	info, err := getContainerInfoByName(containerName)
+	if err != nil {
+		log.Errorf("Get info of %s error %v", containerName, err)
+	}
+	mntURL := info.RootUrl + "/merge"
 	imageTar := "/home/eintr/DockerImages/" + imagesName + ".tar"
 	fmt.Printf("%s\n", imageTar)
 	if _, err := exec.Command("tar", "-cvf", imageTar, "-C", mntURL, ".").CombinedOutput(); err != nil {
