@@ -3,6 +3,7 @@ package container
 import (
 	"encoding/base32"
 	"fmt"
+	"io"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -19,6 +20,7 @@ var (
 	Exit                string = "exited"
 	DefaultInfoLocation string = "/var/run/docker-ece/%s/"
 	ConfigName          string = "config.json"
+	ContainerLogFile    string = "container.log"
 )
 
 type ContainerInfo struct {
@@ -65,18 +67,52 @@ func NewParentProcess(tty bool, volume string) (*ContainerInit, *exec.Cmd, *os.F
 			syscall.CLONE_NEWNET | syscall.CLONE_NEWIPC,
 	}
 
-	if tty {
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-	}
-	cmd.ExtraFiles = []*os.File{readPipe}
-
 	id := NewId()
 	id_base := Encode([]byte(id))
 	imageURL := "/home/eintr/DockerImages"
 	rootURL := "/var/lib/docker-ece/" + id_base
 	mntURL := "/var/lib/docker-ece/" + id_base + "/merge"
+
+	// 构造日志输出
+	if tty {
+		// 生成容器对应日志目录
+		dirURL := fmt.Sprintf(DefaultInfoLocation, id)
+		if err := os.MkdirAll(dirURL, 0622); err != nil && !os.IsExist(err) {
+			log.Errorf("NewParentProcess mkdir %serror %v", dirURL, err)
+			return nil, nil, nil
+		}
+		stdLogFilePath := dirURL + ContainerLogFile
+		stdLogFile, err := os.OpenFile(stdLogFilePath,
+			os.O_WRONLY|os.O_CREATE|os.O_SYNC|os.O_APPEND, 0755)
+		if err != nil {
+			log.Errorf("NewParentProcess create file %s error %v", stdLogFilePath, err)
+			return nil, nil, nil
+		}
+		// 设置日志输出到文件
+		// 定义多个写入器
+		writers := []io.Writer{stdLogFile, os.Stdout}
+		fileAndStdoutWriter := io.MultiWriter(writers...)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = fileAndStdoutWriter
+		cmd.Stderr = os.Stderr
+	} else {
+		// 生成容器对应日志目录
+		dirURL := fmt.Sprintf(DefaultInfoLocation, id)
+		if err := os.MkdirAll(dirURL, 0622); err != nil && !os.IsExist(err) {
+			log.Errorf("NewParentProcess mkdir %serror %v", dirURL, err)
+			return nil, nil, nil
+		}
+		stdLogFilePath := dirURL + ContainerLogFile
+		stdLogFile, err := os.OpenFile(stdLogFilePath,
+			os.O_WRONLY|os.O_CREATE|os.O_SYNC|os.O_APPEND, 0755)
+		if err != nil {
+			log.Errorf("NewParentProcess create file %s error %v", stdLogFilePath, err)
+			return nil, nil, nil
+		}
+		cmd.Stdout = stdLogFile
+	}
+	cmd.ExtraFiles = []*os.File{readPipe}
+
 	NewWorkSpace(imageURL, rootURL, mntURL, volume)
 	cmd.Dir = mntURL
 	return &ContainerInit{id, id_base, rootURL, mntURL}, cmd, writePipe

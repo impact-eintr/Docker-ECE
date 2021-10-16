@@ -22,9 +22,12 @@ func ListContainers() {
 
 	var containers []*container.ContainerInfo
 	for _, file := range files {
+
 		tmpContainer, err := getContainerInfo(file)
 		if err != nil {
-			logrus.Errorf("Get container info error %v", err)
+			if err != os.ErrInvalid {
+				logrus.Errorf("Get container info error %v", err)
+			}
 			continue
 		}
 		containers = append(containers, tmpContainer)
@@ -48,6 +51,9 @@ func ListContainers() {
 }
 
 func getContainerInfo(file os.FileInfo) (*container.ContainerInfo, error) {
+	if !file.IsDir() {
+		return nil, os.ErrInvalid
+	}
 	containerName := file.Name()
 	configFileDir := fmt.Sprintf(container.DefaultInfoLocation, containerName)
 	configFileDir = configFileDir + container.ConfigName

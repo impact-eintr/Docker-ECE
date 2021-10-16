@@ -34,6 +34,7 @@ type ContainerInfo struct {
 func Run(tty, version bool, comArray []string, res *subsystems.ResourceConfig,
 	volume, containerName string) {
 
+	// containerInit 包含容器初始化时需要记录的一些信息
 	containerInit, parent, writePipe := container.NewParentProcess(tty, volume)
 	if parent == nil {
 		log.Errorf("New parent process error")
@@ -53,11 +54,15 @@ func Run(tty, version bool, comArray []string, res *subsystems.ResourceConfig,
 
 	cgroupManager := cgroups.NewCgroupManager(containerInit.Id_base)
 	if version {
-		defer cgroupManager.Destroy2()
+		if tty {
+			defer cgroupManager.Destroy2()
+		}
 		cgroupManager.Set2(res)
 		cgroupManager.Apply2(parent.Process.Pid)
 	} else {
-		defer cgroupManager.Destroy()
+		if tty {
+			defer cgroupManager.Destroy()
+		}
 		cgroupManager.Set(res)
 		cgroupManager.Apply(parent.Process.Pid)
 	}
@@ -66,18 +71,14 @@ func Run(tty, version bool, comArray []string, res *subsystems.ResourceConfig,
 
 	if tty {
 		parent.Wait()
-		deleteContainerInfo(containerName)
+		deleteContainerInfo(containerInit.Id, containerName)
 		container.DeleteWorkSpace(containerInit.RootUrl, containerInit.MountUrl, volume)
 	}
-	//rootURL := "/var/lib/docker-ece"
-	//mntURL := "/var/lib/docker-ece/merge"
-	//container.DeleteWorkSpace(rootURL, mntURL, volume)
 }
 
 func recordContainerInfo(containerId string, containerPID int, commandArray []string,
 	containerName string) (string, error) {
 
-	//id := randStringBytes(10)
 	createTime := time.Now().Format("2006-01-02 15:04:05")
 	command := strings.Join(commandArray, "")
 	if containerName == "" {
@@ -99,12 +100,19 @@ func recordContainerInfo(containerId string, containerPID int, commandArray []st
 	}
 	jsonStr := string(jsonBytes)
 
-	dirUrl := fmt.Sprintf(container.DefaultInfoLocation, containerName)
+	dirUrl := fmt.Sprintf(container.DefaultInfoLocation, containerId)
+	linkUrl := fmt.Sprintf(container.DefaultInfoLocation[:len(container.DefaultInfoLocation)-1],
+		containerName)
+	if err := os.Symlink(dirUrl, linkUrl); err != nil {
+		log.Errorf("Link error %s error %v", dirUrl, err)
+		return "", err
+	}
 	if err := os.MkdirAll(dirUrl, 0622); err != nil {
 		log.Errorf("Mkdir error %s error %v", dirUrl, err)
 		return "", err
 	}
-	fileName := dirUrl + "/" + container.ConfigName
+
+	fileName := dirUrl + container.ConfigName
 	file, err := os.Create(fileName)
 	defer file.Close()
 	if err != nil {
@@ -119,23 +127,17 @@ func recordContainerInfo(containerId string, containerPID int, commandArray []st
 	return containerName, nil
 }
 
-func deleteContainerInfo(containerId string) {
-	dirURL := fmt.Sprintf(container.DefaultInfoLocation, containerId)
-	if err := os.RemoveAll(dirURL); err != nil {
-		log.Errorf("Remove dir %s error %v", dirURL, err)
+func deleteContainerInfo(containerId, containerName string) {
+	dirUrl := fmt.Sprintf(container.DefaultInfoLocation, containerId)
+	if err := os.RemoveAll(dirUrl); err != nil {
+		log.Errorf("Remove dir %s error %v", dirUrl, err)
+	}
+	linkUrl := fmt.Sprintf(container.DefaultInfoLocation[:len(container.DefaultInfoLocation)-1],
+		containerName)
+	if err := os.RemoveAll(linkUrl); err != nil {
+		log.Errorf("Remove dir %s error %v", dirUrl, err)
 	}
 }
-
-//func randStringBytes(n int) string {
-//	letterBytes := "1234567890"
-//	rand.Seed(time.Now().UnixNano())
-//	b := make([]byte, n)
-//	for i := range b {
-//		b[i] = letterBytes[rand.Intn(len(letterBytes))]
-//	}
-//	fmt.Println(string(b))
-//	return string(b)
-//}
 
 func sendInitCommand(comArray []string, writePipe *os.File) {
 	command := strings.Join(comArray, " ")
