@@ -39,7 +39,6 @@ func NewId() string {
 	for i := range b {
 		b[i] = letterBytes[rand.Intn(len(letterBytes))]
 	}
-	fmt.Println(string(b))
 	return string(b)
 }
 
@@ -54,24 +53,34 @@ type ContainerInit struct {
 	MountUrl string
 }
 
-func NewParentProcess(tty bool, volume string) (*ContainerInit, *exec.Cmd, *os.File) {
+func NewParentProcess(tty bool, imageName, volume string) (*ContainerInit, *exec.Cmd, *os.File) {
 	readPipe, writePipe, err := NewPipe()
 	if err != nil {
 		log.Error("New pipe error %v", err)
 		return nil, nil, nil
 	}
 
+	id := NewId()
+	id_base := Encode([]byte(id))
+	rootURL := "/var/lib/docker-ece/" + id_base
+	mntURL := "/var/lib/docker-ece/" + id_base + "/merge"
+
 	cmd := exec.Command("/proc/self/exe", "init")
+
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS |
 			syscall.CLONE_NEWNET | syscall.CLONE_NEWIPC,
 	}
 
-	id := NewId()
-	id_base := Encode([]byte(id))
-	imageURL := "/home/eintr/DockerImages"
-	rootURL := "/var/lib/docker-ece/" + id_base
-	mntURL := "/var/lib/docker-ece/" + id_base + "/merge"
+	cmd.ExtraFiles = []*os.File{readPipe}
+
+	// 从镜像构造容器
+	var imageURL string
+	if imageName != "" {
+		imageURL = "/home/eintr/DockerImages/" + imageName + ".tar"
+	}
+	NewWorkSpace(imageURL, rootURL, mntURL, volume)
+	cmd.Dir = mntURL
 
 	// 构造日志输出
 	if tty {
@@ -88,8 +97,7 @@ func NewParentProcess(tty bool, volume string) (*ContainerInit, *exec.Cmd, *os.F
 			log.Errorf("NewParentProcess create file %s error %v", stdLogFilePath, err)
 			return nil, nil, nil
 		}
-		// 设置日志输出到文件
-		// 定义多个写入器
+		// 设置日志输出到文件 定义多个写入器
 		writers := []io.Writer{stdLogFile, os.Stdout}
 		fileAndStdoutWriter := io.MultiWriter(writers...)
 		cmd.Stdin = os.Stdin
@@ -111,10 +119,6 @@ func NewParentProcess(tty bool, volume string) (*ContainerInit, *exec.Cmd, *os.F
 		}
 		cmd.Stdout = stdLogFile
 	}
-	cmd.ExtraFiles = []*os.File{readPipe}
-
-	NewWorkSpace(imageURL, rootURL, mntURL, volume)
-	cmd.Dir = mntURL
 	return &ContainerInit{id, id_base, rootURL, mntURL}, cmd, writePipe
 }
 
@@ -134,7 +138,7 @@ func NewWorkSpace(imageURL, rootURL, mntURL, volume string) {
 	CreateUpperLayer(rootURL)
 	CreateWorkDir(rootURL)
 
-	CreateMountPoint(rootURL, mntURL) // 创建merge层
+	CreateMountPoint(imageURL, rootURL, mntURL) // 创建merge层
 	if volume != "" {
 		volumeURLs := volumeUrlExtract(volume)
 		length := len(volumeURLs)
@@ -174,8 +178,13 @@ func MountVolume(rootURL string, mntURL string, volumeURLs []string) {
 }
 
 func CreateLowerLayer(imageURL, rootURL string) {
-	busyboxURL := rootURL + "/busybox"
-	busyboxTarURL := imageURL + "/ubuntu.tar"
+	if imageURL == "" {
+		return
+	}
+	var busyboxURL, busyboxTarURL string
+	busyboxURL = rootURL + "/lower"
+	busyboxTarURL = imageURL
+
 	exist, err := PathExists(busyboxURL)
 	if err != nil {
 		log.Infof("Fail to judge whether dir %s exists. %v", busyboxURL, err)
@@ -205,15 +214,25 @@ func CreateWorkDir(rootURL string) {
 	}
 }
 
-func CreateMountPoint(rootURL string, mntURL string) {
+func CreateMountPoint(imageURL string, rootURL string, mntURL string) {
+	// TODO 没有镜像就应该挂载根目录
+	var dirs string
+	if imageURL != "" {
+		dirs = "lowerdir=" + rootURL + "/lower" +
+			",upperdir=" + rootURL + "/upper" +
+			",workdir=" + rootURL + "/work"
+	} else {
+		fakeRoot := "/home/eintr/Downloads/root"
+		dirs = "lowerdir=" + fakeRoot +
+			",upperdir=" + rootURL + "/upper" +
+			",workdir=" + rootURL + "/work"
+	}
+
+	fmt.Println(dirs)
 	if err := os.Mkdir(mntURL, 0777); err != nil {
 		log.Errorf("Mkdir dir %s error.%v", mntURL, err)
 	}
-	dirs := "lowerdir=" + rootURL + "/busybox" +
-		",upperdir=" + rootURL + "/upper" +
-		",workdir=" + rootURL + "/work"
 
-	fmt.Println(dirs)
 	cmd := exec.Command("mount", "-t", "overlay", "overlay", "-o", dirs, mntURL)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

@@ -32,10 +32,10 @@ type ContainerInfo struct {
 }
 
 func Run(tty, version bool, comArray []string, res *subsystems.ResourceConfig,
-	volume, containerName string) {
+	volume, imageName, containerName string) {
 
 	// containerInit 包含容器初始化时需要记录的一些信息
-	containerInit, parent, writePipe := container.NewParentProcess(tty, volume)
+	containerInit, parent, writePipe := container.NewParentProcess(tty, imageName, volume)
 	if parent == nil {
 		log.Errorf("New parent process error")
 		return

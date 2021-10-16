@@ -27,8 +27,6 @@ func RunContainerInitProcess() error {
 		log.Errorf("Exec loop path error %v", err)
 		return err
 	}
-
-	log.Infof("find path %s", path)
 	if err := syscall.Exec(path, cmdArray[0:], os.Environ()); err != nil {
 		log.Errorf(err.Error())
 	}
@@ -50,11 +48,10 @@ func readUserCommand() []string {
 }
 
 // Init 挂载点
-func setUpMount() error {
+func setUpMount() {
 	pwd, err := os.Getwd()
 	if err != nil {
 		log.Errorf("Get current working directory error. %s", err)
-		return err
 	}
 	log.Infof("Current location is [%s]", pwd)
 
@@ -62,14 +59,12 @@ func setUpMount() error {
 
 	if err := pivotRoot(pwd); err != nil {
 		log.Errorf("Error when call pivotRoot %v", err)
-		return err
 	}
 
 	defaultMountFlags := syscall.MS_NOEXEC | syscall.MS_NODEV | syscall.MS_NOSUID
 	if err := syscall.Mount("proc", "/proc", "proc", uintptr(defaultMountFlags), ""); err != nil {
-		return fmt.Errorf("Fail to mount /proc fs in container process. Error: %v", err)
+		log.Errorf("Fail to mount /proc fs in container process. Error: %v", err)
 	}
-	return syscall.Mount("tmpfs", "/dev", "tmpfs", syscall.MS_NOSUID|syscall.MS_STRICTATIME, "mode=755")
 }
 
 /* pivot_root Semantics:

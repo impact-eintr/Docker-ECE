@@ -13,7 +13,6 @@ import (
 var initCommand = cli.Command{
 	Name:  "init",
 	Usage: "Init container",
-
 	Action: func(context *cli.Context) error {
 		log.Infof("init come on")
 		cmd := context.Args().Get(0)
@@ -56,6 +55,10 @@ var runCommand = cli.Command{
 			Usage: "volume",
 		},
 		cli.StringFlag{
+			Name:  "image",
+			Usage: "the image name used to build the container",
+		},
+		cli.StringFlag{
 			Name:  "name",
 			Usage: "container name",
 		},
@@ -68,23 +71,28 @@ var runCommand = cli.Command{
 		for _, arg := range context.Args() {
 			cmdArray = append(cmdArray, arg)
 		}
-
+		// enable tty
 		tty := context.Bool("it")
-		version := context.Bool("cgroup2")
 		detach := context.Bool("d")
 		if tty && detach {
 			return fmt.Errorf("it and d paramter can not both provided")
 		}
+		// cgroup version and configure
+		version := context.Bool("cgroup2")
 		resConf := &subsystems.ResourceConfig{
 			MemoryLimit: context.String("m"),
 			Cpu:         context.String("cpu"),
 			Cpuset:      context.String("cpuset"),
 		}
+		// volume
 		volume := context.String("v")
+		// image name
+		imageName := context.String("image")
+		// container name
 		containerName := context.String("name")
 		// TODO network env port
 
-		Run(tty, version, cmdArray, resConf, volume, containerName)
+		Run(tty, version, cmdArray, resConf, volume, imageName, containerName)
 		return nil
 	},
 }
@@ -143,6 +151,32 @@ var execCommand = cli.Command{
 			commandArray = append(commandArray, arg)
 		}
 		ExecContainer(containerName, commandArray)
+		return nil
+	},
+}
+
+var stopCommand = cli.Command{
+	Name:  "stop",
+	Usage: "stop a container",
+	Action: func(context *cli.Context) error {
+		if len(context.Args()) < 1 {
+			return fmt.Errorf("Missing container name")
+		}
+		containerName := context.Args().Get(0)
+		stopContainer(containerName)
+		return nil
+	},
+}
+
+var removeCommand = cli.Command{
+	Name:  "rm",
+	Usage: "remove unused containers",
+	Action: func(context *cli.Context) error {
+		if len(context.Args()) < 1 {
+			return fmt.Errorf("Missing container name")
+		}
+		containerName := context.Args().Get(0)
+		removeContainer(containerName)
 		return nil
 	},
 }
