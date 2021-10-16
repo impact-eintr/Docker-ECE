@@ -30,6 +30,7 @@ type ContainerInfo struct {
 	Command     string `json:"command"`     // 容器内init运行命令
 	CreatedTime string `json:"createdTime"` // 创建时间
 	Status      string `json:"status"`      // 容器的状态
+	RootUrl     string `json:"rootUrl"`     // 容器挂载目录集的根目录
 }
 
 func NewId() string {
@@ -49,8 +50,8 @@ func Encode(b []byte) string {
 type ContainerInit struct {
 	Id       string
 	Id_base  string
+	ImageUrl string
 	RootUrl  string
-	MountUrl string
 }
 
 func NewParentProcess(tty bool, imageName, volume string) (*ContainerInit, *exec.Cmd, *os.File) {
@@ -60,25 +61,23 @@ func NewParentProcess(tty bool, imageName, volume string) (*ContainerInit, *exec
 		return nil, nil, nil
 	}
 
-	id := NewId()
-	id_base := Encode([]byte(id))
-	rootURL := "/var/lib/docker-ece/" + id_base
-	mntURL := "/var/lib/docker-ece/" + id_base + "/merge"
-
 	cmd := exec.Command("/proc/self/exe", "init")
-
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS |
 			syscall.CLONE_NEWNET | syscall.CLONE_NEWIPC,
 	}
 
-	cmd.ExtraFiles = []*os.File{readPipe}
-
 	// 从镜像构造容器
+	id := NewId()
+	id_base := Encode([]byte(id))
+	rootURL := "/var/lib/docker-ece/" + id_base
+	mntURL := "/var/lib/docker-ece/" + id_base + "/merge"
 	var imageURL string
 	if imageName != "" {
 		imageURL = "/home/eintr/DockerImages/" + imageName + ".tar"
 	}
+
+	cmd.ExtraFiles = []*os.File{readPipe}
 	NewWorkSpace(imageURL, rootURL, mntURL, volume)
 	cmd.Dir = mntURL
 
@@ -119,7 +118,7 @@ func NewParentProcess(tty bool, imageName, volume string) (*ContainerInit, *exec
 		}
 		cmd.Stdout = stdLogFile
 	}
-	return &ContainerInit{id, id_base, rootURL, mntURL}, cmd, writePipe
+	return &ContainerInit{id, id_base, imageURL, rootURL}, cmd, writePipe
 }
 
 func NewPipe() (*os.File, *os.File, error) {
@@ -138,7 +137,7 @@ func NewWorkSpace(imageURL, rootURL, mntURL, volume string) {
 	CreateUpperLayer(rootURL)
 	CreateWorkDir(rootURL)
 
-	CreateMountPoint(imageURL, rootURL, mntURL) // 创建merge层
+	CreateMountPoint(imageURL, rootURL) // 创建merge层
 	if volume != "" {
 		volumeURLs := volumeUrlExtract(volume)
 		length := len(volumeURLs)
@@ -214,8 +213,7 @@ func CreateWorkDir(rootURL string) {
 	}
 }
 
-func CreateMountPoint(imageURL string, rootURL string, mntURL string) {
-	// TODO 没有镜像就应该挂载根目录
+func CreateMountPoint(imageURL string, rootURL string) {
 	var dirs string
 	if imageURL != "" {
 		dirs = "lowerdir=" + rootURL + "/lower" +
@@ -229,6 +227,7 @@ func CreateMountPoint(imageURL string, rootURL string, mntURL string) {
 	}
 
 	fmt.Println(dirs)
+	mntURL := rootURL + "/merge"
 	if err := os.Mkdir(mntURL, 0777); err != nil {
 		log.Errorf("Mkdir dir %s error.%v", mntURL, err)
 	}
@@ -241,17 +240,17 @@ func CreateMountPoint(imageURL string, rootURL string, mntURL string) {
 	}
 }
 
-func DeleteWorkSpace(rootURL string, mntURL string, volume string) {
+func DeleteWorkSpace(rootURL, volume string) {
 	if volume != "" {
 		volumeURLs := volumeUrlExtract(volume)
 		length := len(volumeURLs)
 		if length == 2 && volumeURLs[0] != "" && volumeURLs[1] != "" {
-			DeleteMountPointWithVolume(rootURL, mntURL, volumeURLs)
+			DeleteMountPointWithVolume(rootURL, volumeURLs)
 		} else {
-			DeleteMountPoint(rootURL, mntURL)
+			DeleteMountPoint(rootURL)
 		}
 	} else {
-		DeleteMountPoint(rootURL, mntURL)
+		DeleteMountPoint(rootURL)
 	}
 	DeleteWriteLayer(rootURL)
 }
@@ -262,7 +261,8 @@ func DeleteWriteLayer(rootURL string) {
 	}
 }
 
-func DeleteMountPointWithVolume(rootURL string, mntURL string, volumeURLs []string) {
+func DeleteMountPointWithVolume(rootURL string, volumeURLs []string) {
+	mntURL := rootURL + "/merge"
 	containerUrl := mntURL + volumeURLs[1]
 	cmd := exec.Command("umount", containerUrl)
 	cmd.Stdout = os.Stdout
@@ -283,7 +283,8 @@ func DeleteMountPointWithVolume(rootURL string, mntURL string, volumeURLs []stri
 	}
 }
 
-func DeleteMountPoint(rootURL string, mntURL string) {
+func DeleteMountPoint(rootURL string) {
+	mntURL := rootURL + "/merge"
 	cmd := exec.Command("umount", mntURL)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

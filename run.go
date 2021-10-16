@@ -29,6 +29,7 @@ type ContainerInfo struct {
 	Command     string `json:"command"`     // 容器内init运行命令
 	CreatedTime string `json:"createdTime"` // 创建时间
 	Status      string `json:"status"`      // 容器的状态
+	RootUrl     string `json:"rootUrl"`     // 容器挂载目录集的根目录
 }
 
 func Run(tty, version bool, comArray []string, res *subsystems.ResourceConfig,
@@ -41,12 +42,11 @@ func Run(tty, version bool, comArray []string, res *subsystems.ResourceConfig,
 		return
 	}
 	if err := parent.Start(); err != nil {
-		log.Errorf("New parent process error")
+		log.Errorf("New parent process error: %v", err)
 	}
-
 	// record container info
-	containerName, err := recordContainerInfo(containerInit.Id,
-		parent.Process.Pid, comArray, containerName)
+	containerName, err := recordContainerInfo(containerInit.Id, parent.Process.Pid,
+		containerName, comArray, containerInit.RootUrl)
 	if err != nil {
 		log.Errorf("Record container info error %v", err)
 		return
@@ -72,12 +72,12 @@ func Run(tty, version bool, comArray []string, res *subsystems.ResourceConfig,
 	if tty {
 		parent.Wait()
 		deleteContainerInfo(containerInit.Id, containerName)
-		container.DeleteWorkSpace(containerInit.RootUrl, containerInit.MountUrl, volume)
+		container.DeleteWorkSpace(containerInit.RootUrl, volume)
 	}
 }
 
-func recordContainerInfo(containerId string, containerPID int, commandArray []string,
-	containerName string) (string, error) {
+func recordContainerInfo(containerId string, containerPID int, containerName string,
+	commandArray []string, containerRootUrl string) (string, error) {
 
 	createTime := time.Now().Format("2006-01-02 15:04:05")
 	command := strings.Join(commandArray, "")
@@ -87,10 +87,11 @@ func recordContainerInfo(containerId string, containerPID int, commandArray []st
 	containerInfo := &container.ContainerInfo{
 		Id:          containerId,
 		Pid:         strconv.Itoa(containerPID),
+		Name:        containerName,
 		Command:     command,
 		CreatedTime: createTime,
 		Status:      container.RUNNING,
-		Name:        containerName,
+		RootUrl:     containerRootUrl,
 	}
 
 	jsonBytes, err := json.Marshal(containerInfo)
