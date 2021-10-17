@@ -66,6 +66,14 @@ var runCommand = cli.Command{
 			Name:  "e",
 			Usage: "set environment",
 		},
+		cli.StringFlag{
+			Name:  "net",
+			Usage: "container network",
+		},
+		cli.StringSliceFlag{
+			Name:  "p",
+			Usage: "port mapping",
+		},
 	},
 	Action: func(context *cli.Context) error {
 		if len(context.Args()) < 1 {
@@ -96,9 +104,12 @@ var runCommand = cli.Command{
 		containerName := context.String("name")
 		// env list
 		envSlice := context.StringSlice("e")
-		// TODO network port
-
-		Run(tty, version, cmdArray, resConf, volume, imageName, containerName, envSlice)
+		// netowrk
+		network := context.String("net")
+		// port
+		portmapping := context.StringSlice("p")
+		Run(tty, version, cmdArray, resConf, volume, imageName, containerName,
+			envSlice, network, portmapping)
 		return nil
 	},
 }

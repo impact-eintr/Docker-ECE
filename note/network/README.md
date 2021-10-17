@@ -128,3 +128,161 @@ sudo iptables -t nat -A PREROUTING -p tcp -m tcp --dport 80 -j DNAT --to-desinat
 ```
 
 这样就可以把宿主机上 80 端口的 TCP 请求转发到 Namespace 中的地址 172.18.0.2:80 ，从而实现外部的应用调用。
+
+## 开始构建!
+
+``` bash
+Docker-ECE network create --subnet 192.168.0.0./24 --driver bridge testbridge
+```
+
+通过 Bridge 的网络驱动创建一个网络，网段是 192.168.0.0/24 ，网络驱动是 Bridge
+
+![img](./6.5)
+
+``` go
+package network
+
+import (
+	"encoding/json"
+	"net"
+	"os"
+	"path"
+
+	"github.com/sirupsen/logrus"
+	"github.com/vishvananda/netlink"
+)
+
+var (
+	defaultNetworkPath = "/var/run/docker-ece/network/"
+	drivers            = map[string]NetworkDriver{}
+	networks           = map[string]*Network{}
+)
+
+type Network struct {
+	Name    string     // 网络名
+	IpRange *net.IPNet // 地址段
+	Driver  string     // 网络驱动名
+}
+
+// 网络端点
+// 网络端点是用于连接容器和网络的，保证容器内部与网络的通信
+type Endpoint struct {
+	ID          string           `json:"is"`
+	Device      netlink.Veth     `json:"dev"`
+	IPAddress   net.IP           `json:"ip"`
+	MacAddress  net.HardwareAddr `json:"mac"`
+	PortMapping []string         `json:"mac"`
+	Network     *Network
+}
+
+// 网络驱动
+// 一个网络功能中的组件，不同的驱动对网络的创建、连接、销毁的策略不同
+// 通过在创建网络时指定不同的网络驱动来定义使用那个驱动做网络的配置
+type NetworkDriver interface {
+	// 驱动名
+	Name() string
+	// 创建网络
+	Create(subnet string, name string) (*Network, error)
+	// 删除网络
+	Delete(network Network) error
+	// 连接容器网络端点到网络
+	Connect(network *Network, endpoint *Endpoint) error
+	// 从网络上移除容器网络端点
+	Disconnect(network Network, endpoint *Endpoint) error
+}
+
+// 将这个网络的配置信息保存在文件系统中
+func (nw *Network) dump(dumpPath string) error {
+	if _, err := os.Stat(dumpPath); err != nil {
+		if os.IsNotExist(err) {
+			os.MkdirAll(dumpPath, 0644)
+		} else {
+			return err
+		}
+	}
+
+	nwPath := path.Join(dumpPath, nw.Name)
+	nwFile, err := os.OpenFile(nwPath, os.O_TRUNC|os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		logrus.Errorf("error：", err)
+		return err
+	}
+	defer nwFile.Close()
+
+	nwJson, err := json.Marshal(nw)
+	if err != nil {
+		logrus.Errorf("error：", err)
+		return err
+	}
+
+	_, err = nwFile.Write(nwJson)
+	if err != nil {
+		logrus.Errorf("error：", err)
+		return err
+	}
+	return nil
+
+}
+
+// 从网络的配置目录中的文件读取到网络的配置
+func (nw *Network) load(dumpPath string) error {
+	nwConfigFile, err := os.Open(dumpPath)
+	defer nwConfigFile.Close()
+	if err != nil {
+		return err
+	}
+	nwJson := make([]byte, 4096)
+	n, err := nwConfigFile.Read(nwJson)
+	if err != nil {
+		return err
+	}
+
+	err = json.Unmarshal(nwJson[:n], nw)
+	if err != nil {
+		logrus.Errorf("Error load nw info", err)
+		return err
+	}
+	return nil
+}
+
+// 从网络的配置目录中的删除配置文件
+func (nw *Network) remove(dumpPath string) error {
+	if _, err := os.Stat(path.Join(dumpPath, nw.Name)); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		} else {
+			return err
+		}
+	} else {
+		return os.Remove(path.Join(dumpPath, nw.Name))
+	}
+}
+
+func CreateNetwork(driver, subnet, name string) error {
+	// ParseCIDR 是 golang net的函数 功能是将网段的字符串转换成net.IPNet的对象
+	_, cidr, _ := net.ParseCIDR(subnet)
+	// 通过IPAM分配网关IP，获取到网段中第一个IP作为网关的IP
+	gatewayIp, err := ipAllocator.Allocate(cidr)
+	if err != nil {
+		return err
+	}
+
+	cidr.IP = gatewayIp
+	// 通过指定的网络驱动创建网络，这里的drivers字典是哥哥网络驱动的实例字典，
+	// 通过调用网络驱动的Create方法创建网络
+	nw, err := drivers[driver].Create(cidr.String(), name)
+	if err != nil {
+		return err
+	}
+	return nw.dump(defaultNetworkPath)
+}
+
+```
+
+#### 创建容器并连接网络
+
+``` bash
+mydocker run -it -p 80:80 --net testbridgenet xxxx
+```
+
+![img](./6.6)

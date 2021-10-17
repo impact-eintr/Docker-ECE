@@ -24,14 +24,15 @@ var (
 )
 
 type ContainerInfo struct {
-	Pid         string `json:"pid"`         // 容器的init进程在宿主机上的 PID
-	Id          string `json:"id"`          // 容器Id
-	Name        string `json:"name"`        // 容器名
-	Command     string `json:"command"`     // 容器内init运行命令
-	CreatedTime string `json:"createdTime"` // 创建时间
-	Status      string `json:"status"`      // 容器的状态
-	ImageUrl    string `json:"imageUrl"`    // 容器挂载镜像 这个其实应该可以省略
-	RootUrl     string `json:"rootUrl"`     // 容器挂载目录集的根目录
+	Pid         string   `json:"pid"`         // 容器的init进程在宿主机上的 PID
+	Id          string   `json:"id"`          // 容器Id
+	Name        string   `json:"name"`        // 容器名
+	Command     string   `json:"command"`     // 容器内init运行命令
+	CreatedTime string   `json:"createdTime"` // 创建时间
+	Status      string   `json:"status"`      // 容器的状态
+	ImageUrl    string   `json:"imageUrl"`    // 容器挂载镜像 这个其实应该可以省略
+	RootUrl     string   `json:"rootUrl"`     // 容器挂载目录集的根目录
+	PortMapping []string `json:"portmapping"` // 端口映射
 }
 
 type ContainerInit struct {

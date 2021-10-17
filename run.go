@@ -11,6 +11,7 @@ import (
 	"github.com/impact-eintr/Docker-ECE/cgroups"
 	"github.com/impact-eintr/Docker-ECE/cgroups/subsystems"
 	"github.com/impact-eintr/Docker-ECE/container"
+	"github.com/impact-eintr/Docker-ECE/network"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -34,7 +35,8 @@ type ContainerInfo struct {
 }
 
 func Run(tty, version bool, comArray []string, res *subsystems.ResourceConfig,
-	volume, imageName, containerName string, envSlice []string) {
+	volume, imageName, containerName string, envSlice []string,
+	nw string, portmapping []string) {
 
 	// containerInit 包含容器初始化时需要记录的一些信息
 	containerInit, parent, writePipe := container.NewParentProcess(tty, imageName, volume, envSlice)
@@ -66,6 +68,21 @@ func Run(tty, version bool, comArray []string, res *subsystems.ResourceConfig,
 		}
 		cgroupManager.Set(res)
 		cgroupManager.Apply(parent.Process.Pid)
+	}
+
+	if nw != "" {
+		// config container network
+		network.Init()
+		containerInfo := &container.ContainerInfo{
+			Id:          containerInit.Id,
+			Pid:         strconv.Itoa(parent.Process.Pid),
+			Name:        containerName,
+			PortMapping: portmapping,
+		}
+		if err := network.Connect(nw, containerInfo); err != nil {
+			log.Errorf("Error Connetc Newwork %v", err)
+			return
+		}
 	}
 
 	sendInitCommand(comArray, writePipe)
