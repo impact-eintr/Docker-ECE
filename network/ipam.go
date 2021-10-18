@@ -9,8 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-//var ipamDefaultAllocatorPath = "/var/run/docker-ece/network/ipam/subnet.json"
-var ipamDefaultAllocatorPath = "./subnet.json"
+var ipamDefaultAllocatorPath = "/var/run/docker-ece/network/ipam/subnet.json"
 
 type IPAM struct {
 	// 分配文件存放地址
