@@ -2,7 +2,6 @@ package network
 
 import (
 	"encoding/json"
-	"fmt"
 	"net"
 	"os"
 	"path"
@@ -10,7 +9,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var ipamDefaultAllocatorPath = "/var/run/docker-ece/network/ipam/subnet.json"
+//var ipamDefaultAllocatorPath = "/var/run/docker-ece/network/ipam/subnet.json"
+var ipamDefaultAllocatorPath = "./subnet.json"
 
 type IPAM struct {
 	// 分配文件存放地址
@@ -98,18 +98,15 @@ func (ipam *IPAM) Allocate(subnet *net.IPNet) (ip net.IP, err error) {
 		(*ipam.Subnets)[subnet.String()] = make([]byte, 1<<uint8(size-one))
 	}
 	for c := range (*ipam.Subnets)[subnet.String()] {
-		if (*ipam.Subnets)[subnet.String()][c] == '0' {
+		if (*ipam.Subnets)[subnet.String()][c] == 0 {
 			ipalloc := (*ipam.Subnets)[subnet.String()]
-			ipalloc[c] = '1'
+			ipalloc[c] = 1
 			(*ipam.Subnets)[subnet.String()] = ipalloc
 			ip = subnet.IP
-			fmt.Println("ip start", ip)
 			for t := uint(4); t > 0; t -= 1 {
 				[]byte(ip)[4-t] += uint8(c >> ((t - 1) * 8))
-				fmt.Println("ip test", ip)
 			}
 			ip[3] += 1
-			fmt.Println("ip end", ip)
 			break
 		}
 	}
@@ -138,7 +135,7 @@ func (ipam *IPAM) Release(subnet *net.IPNet, ipaddr *net.IP) error {
 	}
 
 	ipalloc := []byte((*ipam.Subnets)[subnet.String()])
-	ipalloc[c] = '0'
+	ipalloc[c] = 0
 	(*ipam.Subnets)[subnet.String()] = ipalloc
 
 	ipam.dump()
