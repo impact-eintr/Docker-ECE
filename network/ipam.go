@@ -101,6 +101,7 @@ func (ipam *IPAM) Allocate(subnet *net.IPNet) (ip net.IP, err error) {
 			ipalloc := (*ipam.Subnets)[subnet.String()]
 			ipalloc[c] = 1
 			(*ipam.Subnets)[subnet.String()] = ipalloc
+			//fmt.Println("alloc:", (*ipam.Subnets)[subnet.String()])
 			ip = subnet.IP
 			for t := uint(4); t > 0; t -= 1 {
 				[]byte(ip)[4-t] += uint8(c >> ((t - 1) * 8))

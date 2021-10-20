@@ -5,14 +5,17 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/impact-eintr/Docker-ECE/container"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netns"
 )
 
 var (
@@ -67,20 +70,20 @@ func (nw *Network) dump(dumpPath string) error {
 	nwPath := path.Join(dumpPath, nw.Name)
 	nwFile, err := os.OpenFile(nwPath, os.O_TRUNC|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
-		logrus.Errorf("error：", err)
+		logrus.Errorf("error：%v", err)
 		return err
 	}
 	defer nwFile.Close()
 
 	nwJson, err := json.Marshal(nw)
 	if err != nil {
-		logrus.Errorf("error：", err)
+		logrus.Errorf("error：%v", err)
 		return err
 	}
 
 	_, err = nwFile.Write(nwJson)
 	if err != nil {
-		logrus.Errorf("error：", err)
+		logrus.Errorf("error：%v", err)
 		return err
 	}
 	return nil
@@ -102,7 +105,7 @@ func (nw *Network) load(dumpPath string) error {
 
 	err = json.Unmarshal(nwJson[:n], nw)
 	if err != nil {
-		logrus.Errorf("Error load nw info", err)
+		logrus.Errorf("Error load nw info: %v", err)
 		return err
 	}
 	return nil
@@ -221,6 +224,96 @@ func Connect(networkName string, cinfo *container.ContainerInfo) error {
 		return err
 	}
 	// 到容器的namespace配置容器网络设备IP地址
-	// TODO
+	if err = configEndpointIpAddressAndRoute(ep, cinfo); err != nil {
+		return err
+	}
+
+	return configPortMapping(ep, cinfo)
+}
+
+func configEndpointIpAddressAndRoute(ep *Endpoint, cinfo *container.ContainerInfo) error {
+	peerLink, err := netlink.LinkByName(ep.Device.PeerName)
+	if err != nil {
+		return fmt.Errorf("fail config endpoint: %v", err)
+	}
+
+	defer enterContainerNetns(&peerLink, cinfo)()
+
+	interfaceIP := *ep.Network.IpRange
+	interfaceIP.IP = ep.IPAddress
+
+	if err = setInterfaceIP(ep.Device.PeerName, interfaceIP.String()); err != nil {
+		return fmt.Errorf("%v,%s", ep.Network, err)
+	}
+	if err = setInterfaceUp(ep.Device.PeerName); err != nil {
+		return err
+	}
+	if err = setInterfaceUp("lo"); err != nil {
+		return err
+	}
+
+	_, cidr, _ := net.ParseCIDR("0.0.0.0/0")
+
+	defaultRoute := &netlink.Route{
+		LinkIndex: peerLink.Attrs().Index,
+		Gw:        ep.Network.IpRange.IP,
+		Dst:       cidr,
+	}
+
+	if err = netlink.RouteAdd(defaultRoute); err != nil {
+		return err
+	}
+	return nil
+}
+
+func enterContainerNetns(enLink *netlink.Link, cinfo *container.ContainerInfo) func() {
+	f, err := os.OpenFile(fmt.Sprintf("/proc/%s/ns/net", cinfo.Pid), os.O_RDONLY, 0)
+	if err != nil {
+		logrus.Errorf("error get container net namespace, %v", err)
+	}
+
+	nsFD := f.Fd()
+	runtime.LockOSThread()
+
+	// 修改vrth peer 另外一段移到容器的namespace中
+	if err = netlink.LinkSetNsFd(*enLink, int(nsFD)); err != nil {
+		logrus.Errorf("error set link netns , %v", err)
+	}
+
+	// 获取当前的网络namespace
+	origns, err := netns.Get()
+	if err != nil {
+		logrus.Errorf("error get current netns, %v", err)
+	}
+
+	// 设置当前进程到新的网络namespace，并在函数执行完成之后再恢复到之前的namespace
+	if err = netns.Set(netns.NsHandle(nsFD)); err != nil {
+		logrus.Errorf("error set netns, %v", err)
+	}
+	return func() {
+		netns.Set(origns)
+		origns.Close()
+		runtime.UnlockOSThread()
+		f.Close()
+	}
+}
+
+func configPortMapping(ep *Endpoint, cinfo *container.ContainerInfo) error {
+	for _, pm := range ep.PortMapping {
+		portMapping := strings.Split(pm, ":")
+		if len(portMapping) != 2 {
+			logrus.Errorf("port mapping format error, %v", pm)
+			continue
+		}
+		iptablesCmd := fmt.Sprintf("-t nat -A PREROUTING -p tcp -m tcp --dport %s -j DNAT --to-destination %s:  %s",
+			portMapping[0], ep.IPAddress.String(), portMapping[1])
+		cmd := exec.Command("iptables", strings.Split(iptablesCmd, " ")...)
+		output, err := cmd.Output()
+		if err != nil {
+			logrus.Errorf("iptables Output, %v", output)
+			continue
+		}
+
+	}
 	return nil
 }
