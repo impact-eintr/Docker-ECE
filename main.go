@@ -19,6 +19,7 @@ func main() {
 
 	app.Commands = []cli.Command{
 		initCommand,
+		reInitCommand,
 		runCommand,
 		commitCommand,
 		listCommand,

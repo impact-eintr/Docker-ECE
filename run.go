@@ -47,6 +47,7 @@ func Run(tty, version bool, comArray []string, res *subsystems.ResourceConfig,
 	if err := parent.Start(); err != nil {
 		log.Errorf("New parent process error: %v", err)
 	}
+
 	// record container info
 	containerName, err := recordContainerInfo(containerInit, parent.Process.Pid,
 		containerName, comArray)
@@ -89,8 +90,8 @@ func Run(tty, version bool, comArray []string, res *subsystems.ResourceConfig,
 
 	if tty {
 		parent.Wait()
-		deleteContainerInfo(containerInit.Id, containerName)
-		container.DeleteWorkSpace(containerInit.RootUrl, volume)
+		// 停止容器
+		stopHook(containerName)
 	}
 }
 
@@ -98,7 +99,8 @@ func recordContainerInfo(containerInit *container.ContainerInit, containerPID in
 	containerName string, commandArray []string) (string, error) {
 
 	createTime := time.Now().Format("2006-01-02 15:04:05")
-	command := strings.Join(commandArray, "")
+	command := strings.Join(commandArray, " ")
+	fmt.Println(command)
 	var flag bool
 	if containerName == "" {
 		containerName = containerInit.Id

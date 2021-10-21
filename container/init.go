@@ -13,20 +13,25 @@ import (
 )
 
 func RunContainerInitProcess() error {
+
+	// 读取传入的命令
 	cmdArray := readUserCommand()
 	if cmdArray == nil || len(cmdArray) == 0 {
 		return fmt.Errorf("Run container get user command")
 	}
 
+	// 设置挂载点
 	setUpMount()
 	//defaultMountFlags := syscall.MS_NOEXEC | syscall.MS_NOSUID | syscall.MS_NODEV
 	//syscall.Mount("proc", "/proc", "proc", uintptr(defaultMountFlags), "")
 
+	// 加载环境变量
 	path, err := exec.LookPath(cmdArray[0])
 	if err != nil {
 		log.Errorf("Exec loop path error %v", err)
 		return err
 	}
+	// 执行命令
 	if err := syscall.Exec(path, cmdArray[0:], os.Environ()); err != nil {
 		log.Errorf(err.Error())
 	}
@@ -62,9 +67,8 @@ func setUpMount() {
 	}
 
 	defaultMountFlags := syscall.MS_NOEXEC | syscall.MS_NODEV | syscall.MS_NOSUID
-	if err := syscall.Mount("proc", "/proc", "proc", uintptr(defaultMountFlags), ""); err != nil {
-		log.Errorf("Fail to mount /proc fs in container process. Error: %v", err)
-	}
+	syscall.Mount("proc", "/proc", "proc", uintptr(defaultMountFlags), "")
+	syscall.Mount("tmpfs", "/dev", "tmpfs", syscall.MS_NOSUID|syscall.MS_STRICTATIME, "mode=755")
 }
 
 /* pivot_root Semantics:
@@ -94,7 +98,6 @@ func setUpMount() {
 var old_root = ".pivot_root"
 
 func pivotRoot(root string) error {
-	//这个root目录在之前通过cmd.Dir='/path/busybox'设置好了
 	// new_root 和put_old 必须不能同时存在当前root 的同一个文件系统中,需要通过--bind重新挂载一下
 	if err := syscall.Mount(root, root, "bind", syscall.MS_BIND|syscall.MS_REC, ""); err != nil {
 		return fmt.Errorf("mount --bind PWD PWD error ")

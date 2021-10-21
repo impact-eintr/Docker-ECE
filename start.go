@@ -23,17 +23,16 @@ func startContainer(containerName string) {
 		log.Errorf("New parent process error")
 		return
 	}
+
 	if err := parent.Start(); err != nil {
 		log.Errorf("New parent process error: %v", err)
 	}
 
 	// TODO  cgroup 之后再支持
 
-	sendInitCommand([]string{info.Command}, writePipe)
-
 	// 把新的容器信息写回配置文件
 	info.Status = container.RUNNING
-	info.Pid = fmt.Sprintf("%d", parent.Process.Pid) // TODO 获取新的PID
+	info.Pid = fmt.Sprintf("%d", parent.Process.Pid)
 
 	newContentBytes, err := json.Marshal(info)
 	if err != nil {
@@ -45,20 +44,7 @@ func startContainer(containerName string) {
 	if err := ioutil.WriteFile(configFilePath, newContentBytes, 0622); err != nil {
 		logrus.Errorf("Write file %s error", configFilePath, err)
 	}
-	fmt.Println(containerName)
-}
+	sendInitCommand([]string{info.Command}, writePipe)
 
-func GetContainerInitByName(containerName string) (*container.ContainerInit, error) {
-	dirURL := fmt.Sprintf(container.DefaultInfoLocation, containerName)
-	configFilePath := dirURL + container.ConfigName
-	contentBytes, err := ioutil.ReadFile(configFilePath)
-	if err != nil {
-		return nil, err
-	}
-	var containerInfo container.ContainerInfo
-	if err := json.Unmarshal(contentBytes, &containerInfo); err != nil {
-		return nil, err
-	}
-	return &container.ContainerInit{containerInfo.Id, "",
-		containerInfo.ImageUrl, containerInfo.RootUrl}, nil
+	log.Infof("%s 成功启动", containerName)
 }

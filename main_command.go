@@ -17,7 +17,18 @@ var initCommand = cli.Command{
 	Action: func(context *cli.Context) error {
 		log.Infof("init come on")
 		cmd := context.Args().Get(0)
-		log.Info("command %s", cmd)
+		log.Infof("command %s", cmd)
+		err := container.RunContainerInitProcess()
+		return err
+	},
+}
+var reInitCommand = cli.Command{
+	Name:  "reinit",
+	Usage: "Reinit container",
+	Action: func(context *cli.Context) error {
+		log.Infof("reinit come on")
+		cmd := context.Args().Get(0)
+		log.Infof("command %s", cmd)
 		err := container.RunContainerInitProcess()
 		return err
 	},
@@ -266,5 +277,29 @@ var networkCommand = cli.Command{
 				return nil
 			},
 		},
+	},
+}
+
+// TODO 之后写完OSS了 把eoss作为镜像站
+var pullCommand = cli.Command{
+	Name:  "pull",
+	Usage: "pull image",
+	Action: func(context *cli.Context) error {
+		if len(context.Args()) < 1 {
+			return fmt.Errorf("Missing image name")
+		}
+		return nil
+	},
+}
+
+// TODO 之后写完OSS了 把eoss作为镜像站
+var pushCommand = cli.Command{
+	Name:  "push",
+	Usage: "push image",
+	Action: func(context *cli.Context) error {
+		if len(context.Args()) < 1 {
+			return fmt.Errorf("Missing image name")
+		}
+		return nil
 	},
 }

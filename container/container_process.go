@@ -3,7 +3,6 @@ package container
 import (
 	"encoding/base32"
 	"fmt"
-	"io"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -86,24 +85,8 @@ func NewParentProcess(tty bool, imageName, volume string, envSlice []string) (*C
 
 	// 构造日志输出
 	if tty {
-		// 生成容器对应日志目录
-		dirURL := fmt.Sprintf(DefaultInfoLocation, id)
-		if err := os.MkdirAll(dirURL, 0622); err != nil && !os.IsExist(err) {
-			log.Errorf("NewParentProcess mkdir %serror %v", dirURL, err)
-			return nil, nil, nil
-		}
-		stdLogFilePath := dirURL + ContainerLogFile
-		stdLogFile, err := os.OpenFile(stdLogFilePath,
-			os.O_WRONLY|os.O_CREATE|os.O_SYNC|os.O_APPEND, 0755)
-		if err != nil {
-			log.Errorf("NewParentProcess create file %s error %v", stdLogFilePath, err)
-			return nil, nil, nil
-		}
-		// 设置日志输出到文件 定义多个写入器
-		writers := []io.Writer{stdLogFile, os.Stdout}
-		fileAndStdoutWriter := io.MultiWriter(writers...)
 		cmd.Stdin = os.Stdin
-		cmd.Stdout = fileAndStdoutWriter
+		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 	} else {
 		// 生成容器对应日志目录
@@ -120,6 +103,7 @@ func NewParentProcess(tty bool, imageName, volume string, envSlice []string) (*C
 			return nil, nil, nil
 		}
 		cmd.Stdout = stdLogFile
+		cmd.Stderr = stdLogFile
 	}
 	return &ContainerInit{id, id_base, imageURL, rootURL}, cmd, writePipe
 }
@@ -132,21 +116,20 @@ func ReNewParentProcess(info *ContainerInfo, volume string) (*exec.Cmd, *os.File
 		return nil, nil
 	}
 
-	cmd := exec.Command("/proc/self/exe", "init")
+	// 重新启动进程
+	cmd := exec.Command("/proc/self/exe", "reinit")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS |
 			syscall.CLONE_NEWNET | syscall.CLONE_NEWIPC,
 	}
 
-	// 从镜像构造容器
-	//id_base := info.RootUrl[len("/var/lib/docker-ece/"):]
+	// 重新挂载容器读写层
 	mntURL := info.RootUrl + "/merge"
-
-	cmd.ExtraFiles = []*os.File{readPipe}
 	NewWorkSpace(info.ImageUrl, info.RootUrl, mntURL, volume)
-	cmd.Dir = mntURL
 
-	// 构造日志输出
+	cmd.Dir = mntURL
+	cmd.ExtraFiles = []*os.File{readPipe}
+
 	// 生成容器对应日志目录
 	dirURL := fmt.Sprintf(DefaultInfoLocation, info.Id)
 	if err := os.MkdirAll(dirURL, 0622); err != nil && !os.IsExist(err) {
@@ -160,7 +143,10 @@ func ReNewParentProcess(info *ContainerInfo, volume string) (*exec.Cmd, *os.File
 		log.Errorf("NewParentProcess create file %s error %v", stdLogFilePath, err)
 		return nil, nil
 	}
+	//cmd.Stdin = os.Stdin
 	cmd.Stdout = stdLogFile
+	cmd.Stderr = stdLogFile
+
 	return cmd, writePipe
 }
 
@@ -173,9 +159,8 @@ func NewPipe() (*os.File, *os.File, error) {
 }
 
 func NewWorkSpace(imageURL, rootURL, mntURL, volume string) {
-	if err := os.Mkdir(rootURL, 0777); err != nil {
-		log.Errorf("Mkdir dir %s error. %v", rootURL, err)
-	}
+
+	CreateRootDir(rootURL)
 	CreateLowerLayer(imageURL, rootURL)
 	CreateUpperLayer(rootURL)
 	CreateWorkDir(rootURL)
@@ -219,6 +204,18 @@ func MountVolume(rootURL string, mntURL string, volumeURLs []string) {
 	}
 }
 
+func CreateRootDir(rootURL string) {
+	exist, err := PathExists(rootURL)
+	if err != nil {
+		log.Infof("Fail to judge whether dir %s exists. %v", rootURL, err)
+	}
+	if !exist {
+		if err := os.Mkdir(rootURL, 0777); err != nil {
+			log.Errorf("Mkdir dir %s error. %v", rootURL, err)
+		}
+	}
+}
+
 func CreateLowerLayer(imageURL, rootURL string) {
 	if imageURL == "" {
 		return
@@ -231,7 +228,7 @@ func CreateLowerLayer(imageURL, rootURL string) {
 	if err != nil {
 		log.Infof("Fail to judge whether dir %s exists. %v", busyboxURL, err)
 	}
-	if exist == false {
+	if !exist {
 		if err := os.Mkdir(busyboxURL, 0777); err != nil {
 			log.Errorf("Mkdir dir %s error. %v", busyboxURL, err)
 		}
@@ -244,19 +241,41 @@ func CreateLowerLayer(imageURL, rootURL string) {
 
 func CreateUpperLayer(rootURL string) {
 	upperURL := rootURL + "/upper"
-	if err := os.Mkdir(upperURL, 0777); err != nil {
-		log.Errorf("Mkdir dir %s error. %v", upperURL, err)
+	exist, err := PathExists(upperURL)
+	if err != nil {
+		log.Infof("Fail to judge whether dir %s exists. %v", upperURL, err)
+	}
+	if !exist {
+		if err := os.Mkdir(upperURL, 0777); err != nil {
+			log.Errorf("Mkdir dir %s error. %v", upperURL, err)
+		}
 	}
 }
 
 func CreateWorkDir(rootURL string) {
 	workURL := rootURL + "/work"
-	if err := os.Mkdir(workURL, 0777); err != nil {
-		log.Errorf("Mkdir dir %s error. %v", workURL, err)
+	exist, err := PathExists(workURL)
+	if err != nil {
+		log.Infof("Fail to judge whether dir %s exists. %v", workURL, err)
+	}
+	if !exist {
+		if err := os.Mkdir(workURL, 0777); err != nil {
+			log.Errorf("Mkdir dir %s error. %v", workURL, err)
+		}
 	}
 }
 
 func CreateMountPoint(imageURL string, rootURL string) {
+	mntURL := rootURL + "/merge"
+	exist, err := PathExists(mntURL)
+	if err != nil {
+		log.Infof("Fail to judge whether dir %s exists. %v", mntURL, err)
+	}
+	if !exist {
+		if err := os.Mkdir(mntURL, 0777); err != nil {
+			log.Errorf("Mkdir dir %s error. %v", mntURL, err)
+		}
+	}
 	var dirs string
 	if imageURL != "" {
 		dirs = "lowerdir=" + rootURL + "/lower" +
@@ -269,12 +288,6 @@ func CreateMountPoint(imageURL string, rootURL string) {
 			",workdir=" + rootURL + "/work"
 	}
 
-	fmt.Println(dirs)
-	mntURL := rootURL + "/merge"
-	if err := os.Mkdir(mntURL, 0777); err != nil {
-		log.Errorf("Mkdir dir %s error.%v", mntURL, err)
-	}
-
 	cmd := exec.Command("mount", "-t", "overlay", "overlay", "-o", dirs, mntURL)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -283,17 +296,19 @@ func CreateMountPoint(imageURL string, rootURL string) {
 	}
 }
 
-func DeleteWorkSpace(rootURL, volume string) {
-	if volume != "" {
-		volumeURLs := volumeUrlExtract(volume)
-		length := len(volumeURLs)
-		if length == 2 && volumeURLs[0] != "" && volumeURLs[1] != "" {
-			DeleteMountPointWithVolume(rootURL, volumeURLs)
+func DeleteWorkSpace(umount bool, rootURL, volume string) {
+	if umount {
+		if volume != "" {
+			volumeURLs := volumeUrlExtract(volume)
+			length := len(volumeURLs)
+			if length == 2 && volumeURLs[0] != "" && volumeURLs[1] != "" {
+				DeleteMountPointWithVolume(rootURL, volumeURLs)
+			} else {
+				DeleteMountPoint(rootURL)
+			}
 		} else {
 			DeleteMountPoint(rootURL)
 		}
-	} else {
-		DeleteMountPoint(rootURL)
 	}
 	DeleteWriteLayer(rootURL)
 }
@@ -321,9 +336,10 @@ func DeleteMountPointWithVolume(rootURL string, volumeURLs []string) {
 		log.Errorf("%v", err)
 	}
 
-	if err := os.RemoveAll(mntURL); err != nil {
-		log.Errorf("Remove dir %s error %v", mntURL, err)
-	}
+	// 这里不用删除挂载目录 删除读写层时会一并删除
+	//if err := os.RemoveAll(mntURL); err != nil {
+	//	log.Errorf("Remove dir %s error %v", mntURL, err)
+	//}
 }
 
 func DeleteMountPoint(rootURL string) {
@@ -334,9 +350,10 @@ func DeleteMountPoint(rootURL string) {
 	if err := cmd.Run(); err != nil {
 		log.Errorf("%v", err)
 	}
-	if err := os.RemoveAll(mntURL); err != nil {
-		log.Errorf("Remove dir %s error %v", mntURL, err)
-	}
+	// 这里不用删除挂载目录 删除读写层是会一并删除
+	//if err := os.RemoveAll(mntURL); err != nil {
+	//	log.Errorf("Remove dir %s error %v", mntURL, err)
+	//}
 }
 
 func PathExists(path string) (bool, error) {

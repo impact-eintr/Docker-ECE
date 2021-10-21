@@ -1,12 +1,14 @@
 package nsenter
 
 /*
-#include <errno.h>
+#define _GNU_SOURCE
 #include <sched.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 //这里的__attribute__((constructor))指的是， 一旦这个包被引用，那么这个函数就会被自动执行
 //类似于构造函数，会在程序一启动的时候运行
