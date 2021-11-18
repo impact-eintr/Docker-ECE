@@ -46,10 +46,6 @@ var runCommand = cli.Command{
 			Name:  "d",
 			Usage: "detach container",
 		},
-		cli.BoolFlag{
-			Name:  "cgroup2",
-			Usage: "cgroup version 2",
-		},
 		cli.StringFlag{
 			Name:  "m",
 			Usage: "memory limit",
