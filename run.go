@@ -58,12 +58,11 @@ func Run(tty bool, comArray []string, res *subsystems.ResourceConfig,
 	}
 
 	// 开启cgroup
-	cgroupManager := cgroups.NewCgroupManager(containerInit.Id_base)
-
 	// 检查版本
 	_, err = exec.Command("grep", "cgroup2", "/proc/filesystems").CombinedOutput()
 	if err != nil {
 		// cgroup 2
+		cgroupManager := cgroups.NewCgroupManager(containerInit.Id_base)
 		if tty {
 			defer cgroupManager.Destroy2()
 		}
@@ -71,6 +70,7 @@ func Run(tty bool, comArray []string, res *subsystems.ResourceConfig,
 		cgroupManager.Apply2(parent.Process.Pid)
 	} else {
 		// cgroup 1
+		cgroupManager := cgroups.NewCgroupManager("")
 		if tty {
 			defer cgroupManager.Destroy()
 		}
