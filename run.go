@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -34,7 +35,7 @@ type ContainerInfo struct {
 	RootUrl     string `json:"rootUrl"`     // 容器挂载目录集的根目录
 }
 
-func Run(tty, version bool, comArray []string, res *subsystems.ResourceConfig,
+func Run(tty bool, comArray []string, res *subsystems.ResourceConfig,
 	volume, imageName, containerName string, envSlice []string,
 	nw string, portmapping []string) {
 
@@ -56,14 +57,20 @@ func Run(tty, version bool, comArray []string, res *subsystems.ResourceConfig,
 		return
 	}
 
+	// 开启cgroup
 	cgroupManager := cgroups.NewCgroupManager(containerInit.Id_base)
-	if version {
+
+	// 检查版本
+	_, err = exec.Command("grep", "cgroup2", "/proc/filesystems").CombinedOutput()
+	if err != nil {
+		// cgroup 2
 		if tty {
 			defer cgroupManager.Destroy2()
 		}
 		cgroupManager.Set2(res)
 		cgroupManager.Apply2(parent.Process.Pid)
 	} else {
+		// cgroup 1
 		if tty {
 			defer cgroupManager.Destroy()
 		}

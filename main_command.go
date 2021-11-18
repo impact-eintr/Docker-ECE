@@ -101,8 +101,7 @@ var runCommand = cli.Command{
 		if tty && detach {
 			return fmt.Errorf("it and d paramter can not both provided")
 		}
-		// cgroup version and configure
-		version := context.Bool("cgroup2")
+		// cgroup configure
 		resConf := &subsystems.ResourceConfig{
 			MemoryLimit: context.String("m"),
 			Cpu:         context.String("cpu"),
@@ -120,7 +119,7 @@ var runCommand = cli.Command{
 		network := context.String("net")
 		// port
 		portmapping := context.StringSlice("p")
-		Run(tty, version, cmdArray, resConf, volume, imageName, containerName,
+		Run(tty, cmdArray, resConf, volume, imageName, containerName,
 			envSlice, network, portmapping)
 		return nil
 	},
