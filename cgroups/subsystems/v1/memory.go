@@ -3,6 +3,7 @@ package v1
 import (
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"path"
 	"strconv"
@@ -15,6 +16,7 @@ type MemorySubSystem struct {
 
 func (s *MemorySubSystem) Set(cgroupPath string, res *subsystems.ResourceConfig) error {
 	if subsysCgroupPath, err := GetCgroupPath(s.Name(), cgroupPath, true); err == nil {
+		log.Println(subsysCgroupPath)
 		if res.MemoryLimit != "" {
 			if err := ioutil.WriteFile(path.Join(subsysCgroupPath, "memory.limit_in_bytes"), []byte(res.MemoryLimit), 0644); err != nil {
 				return fmt.Errorf("set cgroup memory fail %v", err)
