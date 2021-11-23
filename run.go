@@ -71,7 +71,6 @@ func Run(tty bool, comArray []string, res *subsystems.ResourceConfig,
 
 	} else {
 		// cgroup 2
-		fmt.Println("cgroup2")
 		cgroupManager := cgroups.NewCgroupManager(containerInit.Id_base)
 		if tty {
 			defer cgroupManager.Destroy2()

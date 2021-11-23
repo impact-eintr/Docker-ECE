@@ -1,2 +1,5 @@
-overlay2/*
 Docker-ECE
+Images/*.tar
+
+# 不排除默认镜像
+!Images/busybox.tar

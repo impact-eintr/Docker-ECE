@@ -60,7 +60,7 @@ sudo brctl addif br0 eth0 # 这个得看自己的机器 想接哪个网卡了
 sudo brctl addif br0 veth0
 ```
 
-### Linuc路由表
+### Linux路由表
 路由表是 Linux 内核的一个模块，通过定义路由表来决定在某个网络 NameSpace 中包的流向，从而定义请求会到哪个网络设备上。
 
 ``` bash

@@ -75,7 +75,9 @@ func NewParentProcess(tty bool, imageName, volume string, envSlice []string) (*C
 	mntURL := "/var/lib/docker-ece/" + id_base + "/merge"
 	var imageURL string
 	if imageName != "" {
-		imageURL = "/home/eintr/DockerImages/" + imageName + ".tar"
+		imageURL = "Images/" + imageName + ".tar"
+	} else {
+		imageURL = "Images/busybox.tar"
 	}
 
 	cmd.ExtraFiles = []*os.File{readPipe}
@@ -186,13 +188,13 @@ func volumeUrlExtract(volume string) []string {
 
 func MountVolume(rootURL string, mntURL string, volumeURLs []string) {
 	parentUrl := volumeURLs[0]
-	if err := os.Mkdir(parentUrl, 0777); err != nil {
+	if err := os.MkdirAll(parentUrl, 0777); err != nil {
 		log.Infof("Mkdir parent dir %s error. %v", parentUrl, err)
 	}
 
 	containerUrl := volumeURLs[1]
 	containerVolumeURL := mntURL + containerUrl
-	if err := os.Mkdir(containerVolumeURL, 0777); err != nil {
+	if err := os.MkdirAll(containerVolumeURL, 0777); err != nil {
 		log.Infof("Mkdir container dir %s error. %v", containerVolumeURL, err)
 	}
 
@@ -210,7 +212,7 @@ func CreateRootDir(rootURL string) {
 		log.Infof("Fail to judge whether dir %s exists. %v", rootURL, err)
 	}
 	if !exist {
-		if err := os.Mkdir(rootURL, 0777); err != nil {
+		if err := os.MkdirAll(rootURL, 0777); err != nil {
 			log.Errorf("Mkdir dir %s error. %v", rootURL, err)
 		}
 	}
@@ -229,7 +231,7 @@ func CreateLowerLayer(imageURL, rootURL string) {
 		log.Infof("Fail to judge whether dir %s exists. %v", busyboxURL, err)
 	}
 	if !exist {
-		if err := os.Mkdir(busyboxURL, 0777); err != nil {
+		if err := os.MkdirAll(busyboxURL, 0777); err != nil {
 			log.Errorf("Mkdir dir %s error. %v", busyboxURL, err)
 		}
 		if _, err := exec.Command("tar", "-xvf", busyboxTarURL,
@@ -246,7 +248,7 @@ func CreateUpperLayer(rootURL string) {
 		log.Infof("Fail to judge whether dir %s exists. %v", upperURL, err)
 	}
 	if !exist {
-		if err := os.Mkdir(upperURL, 0777); err != nil {
+		if err := os.MkdirAll(upperURL, 0777); err != nil {
 			log.Errorf("Mkdir dir %s error. %v", upperURL, err)
 		}
 	}
@@ -259,7 +261,7 @@ func CreateWorkDir(rootURL string) {
 		log.Infof("Fail to judge whether dir %s exists. %v", workURL, err)
 	}
 	if !exist {
-		if err := os.Mkdir(workURL, 0777); err != nil {
+		if err := os.MkdirAll(workURL, 0777); err != nil {
 			log.Errorf("Mkdir dir %s error. %v", workURL, err)
 		}
 	}
@@ -272,7 +274,7 @@ func CreateMountPoint(imageURL string, rootURL string) {
 		log.Infof("Fail to judge whether dir %s exists. %v", mntURL, err)
 	}
 	if !exist {
-		if err := os.Mkdir(mntURL, 0777); err != nil {
+		if err := os.MkdirAll(mntURL, 0777); err != nil {
 			log.Errorf("Mkdir dir %s error. %v", mntURL, err)
 		}
 	}
