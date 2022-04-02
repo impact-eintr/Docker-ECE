@@ -18,7 +18,7 @@ sudo ip link add veth0 type veth peer name veth1
 # 分别将两个Veth移动到两个NameSpace中
 sudo ip link set veth0 netns ns1
 
-sudo ip link set veth2 netns ns2
+sudo ip link set veth1 netns ns2
 
 # 去ns1的namspace中查看网络设备
 sudo ip netns exec ns1 ip link
@@ -35,8 +35,8 @@ ns1 和 ns2 的Namespace中，除了 loopback 设备以外就只看到了一个�
 
 ``` bash
 # 配置每个 veth 的网络地址和NameSpace的路由
-sudo ip netns exec ns1 ifconfig veht0 172.18.0.2/24 up
-sudo ip netns exec ns2 ifconfig veht1 172.18.0.3/24 up
+sudo ip netns exec ns1 ifconfig veth0 172.18.0.2/24 up
+sudo ip netns exec ns2 ifconfig veth1 172.18.0.3/24 up
 sudo ip netns exec ns1 route add default dev veth0
 sudo ip netns exec ns2 route add default dev veth1
 # 通过 veth 一端出去的报 另一端能够直接收到
@@ -54,9 +54,9 @@ sudo ip netns add ns1
 sudo ip link add veth0 type veth peer name veth1
 sudo ip link set veth1 netns ns1
 # 创建网桥
-sudo vroctl addif br0 eth0
+sudo brctl addbr br0
 # 挂载网络设备
-sudo brctl addif br0 eth0 # 这个得看自己的机器 想接哪个网卡了
+sudo brctl addif br0 eth0 # 这个得看自己的机器 想接哪个网卡了 不建议接主网络
 sudo brctl addif br0 veth0
 ```
 
